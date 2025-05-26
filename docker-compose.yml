@@ -1,0 +1,57 @@
+version: '3.8'
+
+services:
+  auth-service:
+    build: ./services/auth-service
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./services/auth-service:/app
+      - /app/node_modules
+    command: npm run dev
+    env_file:
+      - ./services/auth-service/.env
+    depends_on:
+      - db
+
+  application-service:
+    build: ./services/application-service
+    ports:
+      - "4003:4003"
+    volumes:
+      - ./services/application-service:/app
+      - /app/node_modules
+    command: npm run dev
+    env_file:
+      - ./services/application-service/.env
+    depends_on:
+      - db
+
+  user-service:
+    build: ./services/user-service
+    ports:
+      - "4004:4004"
+    volumes:
+      - ./services/user-service:/app
+      - /app/node_modules
+    command: npm run dev
+    env_file:
+      - ./services/user-service/.env
+    depends_on:
+      - db
+
+  db:
+    image: postgres:15
+    restart: always
+    environment:
+      POSTGRES_USER: root
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: main
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./init-db/init.sql:/docker-entrypoint-initdb.d/init.sql
+
+volumes:
+  pgdata:
