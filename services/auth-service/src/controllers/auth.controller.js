@@ -4,8 +4,6 @@ import jwt from 'jsonwebtoken';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'devconnectsecret';
 
-
-
 export const registerAccount = async (req, res) => {
   const { accountType, email, password } = req.body;
 
@@ -14,9 +12,8 @@ export const registerAccount = async (req, res) => {
   }
 
   try {
-    
     const existing = await db.query(
-      'SELECT * FROM auth_service.accounts WHERE email = $1 AND account_type = $2',
+      'SELECT * FROM devconnect.accounts WHERE email = $1 AND account_type = $2',
       [email, accountType]
     );
 
@@ -24,12 +21,10 @@ export const registerAccount = async (req, res) => {
       return res.status(409).json({ success: false, error: 'Account already exists' });
     }
 
-    
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    
     const result = await db.query(
-      `INSERT INTO auth_service.accounts (email, password_hash, account_type)
+      `INSERT INTO devconnect.accounts (email, password_hash, account_type)
        VALUES ($1, $2, $3) RETURNING id`,
       [email, hashedPassword, accountType]
     );
@@ -41,11 +36,11 @@ export const registerAccount = async (req, res) => {
     });
 
   } catch (err) {
-    console.error('Register error:', err);
+    console.error('Register error:', err.message);
+    console.error('Stack trace:', err.stack);
     return res.status(500).json({ success: false, error: 'Server error' });
   }
 };
-
 
 export const loginOptions = (req, res) => {
   res.json({ accountTypes: ['User', 'Company'] });
@@ -60,7 +55,7 @@ export const validateLogin = async (req, res) => {
 
   try {
     const result = await db.query(
-      'SELECT * FROM auth_service.accounts WHERE id = $1 AND account_type = $2',
+      'SELECT * FROM devconnect.accounts WHERE id = $1 AND account_type = $2',
       [id, accountType]
     );
 
@@ -77,15 +72,16 @@ export const validateLogin = async (req, res) => {
 
     const token = jwt.sign(
       { id: account.id, type: account.account_type },
-      process.env.JWT_SECRET,
+      JWT_SECRET,
       { expiresIn: '7d' }
     );
 
     res.cookie('token', token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+      secure: false, // <== Allow HTTP while in development
+      maxAge: 7 * 24 * 60 * 60 * 1000
     });
+
 
     return res.status(200).json({
       success: true,
@@ -98,18 +94,16 @@ export const validateLogin = async (req, res) => {
   }
 };
 
-
 export const logoutUser = (req, res) => {
   res.clearCookie('token');
   return res.status(200).json({ message: 'Successfully logged out' });
 };
 
-
 export const getLoggedInUser = async (req, res) => {
   try {
-    const { id, type } = req.user; 
+    const { id, type } = req.user;
     const result = await db.query(
-      'SELECT id, account_type FROM auth_service.accounts WHERE id = $1',
+      'SELECT id, account_type FROM devconnect.accounts WHERE id = $1',
       [id]
     );
 
@@ -123,6 +117,3 @@ export const getLoggedInUser = async (req, res) => {
     return res.status(500).json({ error: 'Server error' });
   }
 };
-
-
-
