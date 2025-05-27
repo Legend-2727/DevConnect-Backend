@@ -13,3 +13,10 @@ done
 ```bash
 docker compose up --build
 ```
+
+Rebuild after installing new dependencies:
+
+```bash
+docker compose down -v
+docker compose up --build
+```
