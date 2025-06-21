@@ -40,6 +40,17 @@ services:
     depends_on:
       - db
 
+  frontend:
+    build:
+      context: ../devconnect-frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+    depends_on:
+      - application-service
+      - auth-service
+
   db:
     image: postgres:15
     restart: always
