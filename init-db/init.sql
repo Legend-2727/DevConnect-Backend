@@ -210,3 +210,21 @@ CREATE TABLE IF NOT EXISTS devconnect.cv_customizations (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   UNIQUE (user_id, job_id)
 );
+
+
+-- 1️⃣ Who are the interviewers?
+CREATE TABLE IF NOT EXISTS devconnect.interviewers (
+  id SERIAL PRIMARY KEY,
+  company_id INTEGER NOT NULL REFERENCES devconnect.companies(id) ON DELETE CASCADE,
+  name VARCHAR(255),
+  email VARCHAR(255) NOT NULL,
+  role VARCHAR(100),                -- e.g. "Hiring Manager", "Tech Lead"
+  UNIQUE (company_id, email)
+);
+
+-- 2️⃣ Which interviewers handle which job?
+CREATE TABLE IF NOT EXISTS devconnect.job_interviewers (
+  job_id INTEGER NOT NULL REFERENCES devconnect.jobs(id) ON DELETE CASCADE,
+  interviewer_id INTEGER NOT NULL REFERENCES devconnect.interviewers(id) ON DELETE CASCADE,
+  PRIMARY KEY (job_id, interviewer_id)
+);

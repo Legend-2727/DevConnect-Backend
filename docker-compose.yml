@@ -1,4 +1,4 @@
-version: '3.8'
+# version: '3.8'
 
 services:
   auth-service:
@@ -27,18 +27,52 @@ services:
     depends_on:
       - db
 
+  
   user-service:
     build: ./services/user-service
     ports:
       - "4004:4004"
     volumes:
       - ./services/user-service:/app
-      - /app/node_modules
+      - ./uploads:/app/uploads 
+      # - /app/node_modules
     command: npm run dev
     env_file:
       - ./services/user-service/.env
     depends_on:
       - db
+      - ai-service  # 🔥 ADD this to wait for ai-service
+
+  company-service:
+    build: ./services/company-service          # ← Dockerfile lives here
+    ports:
+      - "4002:4002"                            # expose externally on :4002
+    volumes:
+      - ./services/company-service:/app        # live-reload during dev
+      # - /app/node_modules                      # keep host node_modules out
+      - ./uploads:/app/uploads                 # share CV files if needed
+    command: npm run dev                       # or `npm start` for prod
+    env_file:
+      - ./services/company-service/.env        # DB + SMTP creds
+    depends_on:
+      - db
+      - ai-service                             # needs /shortlist endpoint
+
+
+  ai-service:
+    build: ./services/ai-service
+    ports:
+      - "8000:8000"  # 🔥 Expose FastAPI port
+    volumes:
+      - ./services/ai-service:/app
+      - ./uploads:/app/uploads
+    command: uvicorn app:app --host 0.0.0.0 --port 8000  # 🔥 Replace sleep
+    env_file:
+      - ./services/ai-service/.env
+    depends_on:
+      - db
+
+
 
   db:
     image: postgres:15
