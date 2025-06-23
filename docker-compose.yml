@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   auth-service:
     build: ./services/auth-service
@@ -43,9 +41,13 @@ services:
   frontend:
     build:
       context: ../devconnect-frontend
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.dev
     ports:
       - "3000:3000"
+    volumes:
+      - ../devconnect-frontend:/app
+      - /app/node_modules
+    command: npm run dev
     restart: unless-stopped
     depends_on:
       - application-service

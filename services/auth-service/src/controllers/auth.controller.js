@@ -49,7 +49,7 @@ export const loginOptions = (req, res) => {
 export const validateLogin = async (req, res) => {
   const { accountType, id, email, password } = req.body;
 
-  console.log(req.body)
+  console.log(req.body);
 
   if (!accountType || (!id && !email) || !password) {
     return res.status(400).json({ success: false, error: 'Missing credentials' });
@@ -58,7 +58,6 @@ export const validateLogin = async (req, res) => {
   try {
     let result;
     if (id) {
-      // Try to parse id as integer for lookup
       const idInt = parseInt(id, 10);
       if (isNaN(idInt)) {
         return res.status(400).json({ success: false, error: 'Invalid ID format' });
@@ -92,13 +91,20 @@ export const validateLogin = async (req, res) => {
 
     res.cookie('token', token, {
       httpOnly: true,
-      secure: false, // <== Allow HTTP while in development
+      secure: false,
       maxAge: 7 * 24 * 60 * 60 * 1000
     });
 
     return res.status(200).json({
       success: true,
-      redirectURL: account.account_type === 'User' ? 'user/dashboard' : 'company/dashboard'
+      user: {
+        id: account.id,
+        email: account.email,
+        accountType: account.account_type,
+        redirectURL: account.account_type === 'User'
+          ? 'user/dashboard'
+          : 'company/dashboard'
+      }
     });
 
   } catch (err) {
