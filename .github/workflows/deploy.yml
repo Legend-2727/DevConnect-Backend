@@ -73,7 +73,7 @@ jobs:
             echo "Rebuilding and restarting Docker containers..."
             cd DevConnect-Backend
             sudo docker-compose down
-            docker system prune -a --volumes -f
+            # docker system prune -a --volumes -f
             sudo docker-compose up --build -d
             
             echo "Deployment completed successfully!"
