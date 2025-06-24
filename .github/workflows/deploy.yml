@@ -2,7 +2,7 @@ name: Deploy DevConnect to Azure VM
 
 on:
   push:
-    branches: [main]
+    branches: [deploytest]
   workflow_dispatch:
 
 jobs:
