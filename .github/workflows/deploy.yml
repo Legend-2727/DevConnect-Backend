@@ -57,6 +57,10 @@ jobs:
             DATABASE_URL=postgres://root:password@db:5432/main
             FRONTEND=http://98.70.42.26
             EOL
+
+            # User service .env
+            cat > DevConnect-Backend/services/user-service/.env << EOL
+            EOL
             
             # Frontend .env
             cat > devconnect-frontend/.env << EOL
