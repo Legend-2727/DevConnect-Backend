@@ -27,19 +27,27 @@ jobs:
             echo "Cloning or updating repositories..."
             if [ ! -d "DevConnect-Backend" ]; then
               git clone https://github.com/Legend-2727/DevConnect-Backend.git
+              cd DevConnect-Backend
+              git checkout deploytest
+              cd ..
             else
               cd DevConnect-Backend
+              git checkout deploytest
               git pull origin deploytest
               cd ..
             fi
             
-            if [ ! -d "devconnect-frontend" ]; then
-              git clone https://github.com/OitijhyaHoque/devconnect-frontend.git
-            else
-              cd devconnect-frontend
-              git pull origin deploytest
-              cd ..
-            fi
+            # if [ ! -d "devconnect-frontend" ]; then
+            #   git clone https://github.com/OitijhyaHoque/devconnect-frontend.git
+            #   cd devconnect-frontend
+            #   git checkout deploytest
+            #   cd ..
+            # else
+            #   cd devconnect-frontend
+            #   git checkout deploytest
+            #   git pull origin deploytest
+            #   cd ..
+            # fi
             
             echo "Setting up environment variables..."
             # Application service .env
@@ -50,25 +58,34 @@ jobs:
             DB_PASS=password
             DB_PORT=5432
             FRONTEND=http://98.70.42.26
+            PORT=4003
+            DATABASE_URL=postgres://root:password@db:5432/main
+            JWT_SECRET=supersecret
             EOL
             
             # Auth service .env
             cat > DevConnect-Backend/services/auth-service/.env << EOL
             DATABASE_URL=postgres://root:password@db:5432/main
             FRONTEND=http://98.70.42.26
+            PORT=4000
+            JWT_SECRET=supersecret
             EOL
 
             # User service .env
             cat > DevConnect-Backend/services/user-service/.env << EOL
+            PORT=4004
+            DATABASE_URL=postgres://root:password@db:5432/main
+            JWT_SECRET=supersecret
+            FRONTEND=http://98.70.42.26
             EOL
             
-            # Frontend .env
-            cat > devconnect-frontend/.env << EOL
-            NEXT_PUBLIC_API_BASE_URL=http://auth-service:4000
-            NEXT_PUBLIC_APP_BASE_URL=http://application-service:4003
-            NEXTAUTH_SECRET=your-secret-here
-            NEXT_PUBLIC_AUTH_REGISTER_URL=http://98.70.42.26:4000/api/v1/auth/register
-            EOL
+            # # Frontend .env
+            # cat > devconnect-frontend/.env << EOL
+            # NEXT_PUBLIC_API_BASE_URL=http://auth-service:4000
+            # NEXT_PUBLIC_APP_BASE_URL=http://application-service:4003
+            # NEXTAUTH_SECRET=your-secret-here
+            # NEXT_PUBLIC_AUTH_REGISTER_URL=http://98.70.42.26:4000/api/v1/auth/register
+            # EOL
             
             echo "Rebuilding and restarting Docker containers..."
             cd DevConnect-Backend
