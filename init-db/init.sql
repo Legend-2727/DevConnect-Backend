@@ -210,3 +210,12 @@ CREATE TABLE IF NOT EXISTS devconnect.cv_customizations (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   UNIQUE (user_id, job_id)
 );
+
+
+ALTER TABLE devconnect.users
+ADD COLUMN bio TEXT;
+
+ALTER TABLE devconnect.users
+ADD COLUMN website TEXT;
+
+ALTER TABLE devconnect.users ADD COLUMN description TEXT;
