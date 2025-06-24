@@ -179,14 +179,14 @@ CREATE TABLE IF NOT EXISTS devconnect.feedback (
 );
 
 -- Interviews Table
-CREATE TABLE IF NOT EXISTS devconnect.interviews (
-  id SERIAL PRIMARY KEY,
-  job_id INTEGER NOT NULL REFERENCES devconnect.jobs(id) ON DELETE CASCADE,
-  application_id INTEGER NOT NULL REFERENCES devconnect.applications(id) ON DELETE CASCADE,
-  slot TIMESTAMPTZ NOT NULL,
-  status VARCHAR(50) DEFAULT 'SCHEDULED',
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+-- CREATE TABLE IF NOT EXISTS devconnect.interviews (
+--   id SERIAL PRIMARY KEY,
+--   job_id INTEGER NOT NULL REFERENCES devconnect.jobs(id) ON DELETE CASCADE,
+--   application_id INTEGER NOT NULL REFERENCES devconnect.applications(id) ON DELETE CASCADE,
+--   slot TIMESTAMPTZ NOT NULL,
+--   status VARCHAR(50) DEFAULT 'SCHEDULED',
+--   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+-- );
 
 -- Email Log Table (was email_service.sent_emails)
 CREATE TABLE IF NOT EXISTS devconnect.sent_emails (
@@ -227,4 +227,31 @@ CREATE TABLE IF NOT EXISTS devconnect.job_interviewers (
   job_id INTEGER NOT NULL REFERENCES devconnect.jobs(id) ON DELETE CASCADE,
   interviewer_id INTEGER NOT NULL REFERENCES devconnect.interviewers(id) ON DELETE CASCADE,
   PRIMARY KEY (job_id, interviewer_id)
+);
+
+
+-- Add interview scheduling tables
+CREATE TABLE devconnect.interviews (
+    id SERIAL PRIMARY KEY,
+    job_id INTEGER REFERENCES devconnect.jobs(id),
+    candidate_user_id INTEGER REFERENCES devconnect.users(id),
+    interviewer_id INTEGER REFERENCES devconnect.interviewers(id),
+    scheduled_date DATE,
+    scheduled_time TIME,
+    duration_minutes INTEGER DEFAULT 60,
+    meeting_link VARCHAR(500),
+    status VARCHAR(50) DEFAULT 'SCHEDULED', -- SCHEDULED, COMPLETED, CANCELLED, NO_SHOW
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE devconnect.interview_scheduling_logs (
+    id SERIAL PRIMARY KEY,
+    job_id INTEGER REFERENCES devconnect.jobs(id),
+    interviewer_email VARCHAR(255),
+    email_checked_at TIMESTAMP,
+    replies_found INTEGER DEFAULT 0,
+    interviews_scheduled INTEGER DEFAULT 0,
+    status VARCHAR(50), -- SUCCESS, FAILED, NO_REPLIES
+    created_at TIMESTAMP DEFAULT NOW()
 );

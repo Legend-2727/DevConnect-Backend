@@ -23,6 +23,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from agent_graph.tools.full_cv_extract_tool    import extract_full_cv_from_pdf
 from agent_graph.tools.shortlist_candidate_tool import shortlist_candidate_tool
 from agent_graph.tools.email_tool import send_shortlist_email
+import psycopg2
 
 # ────────── STATE ──────────
 class ShortlistState(TypedDict):
@@ -178,12 +179,61 @@ def send_email_node(state: ShortlistState):
         payload = _maybe_json(_latest_tool_payload(res["messages"]))
         email_success = payload.get("success", False) if isinstance(payload, dict) else False
         print(f"Email sending result: {payload}")
+
+        # if email_success:
+        save_shortlist_email_to_db(
+                job_id=state.get('job_id'),
+                job_title=state.get('job_title', 'Backend Developer'),
+                shortlisted_count=len(state["shortlist"])
+        )
+            
+            
         
         return {"email_sent": email_success, "messages": state.get("messages", [])}
+        
+        
         
     except Exception as e:
         print(f"Email error: {e}")
         return {"email_sent": False, "messages": state.get("messages", [])}
+    
+
+
+def save_shortlist_email_to_db(job_id: int, job_title: str, shortlisted_count: int):
+    """Save shortlist email info to database for background scheduler tracking"""
+    try:
+        conn = psycopg2.connect(
+            host=os.getenv("DB_HOST", "db"),
+            database=os.getenv("DB_NAME", "main"),
+            user=os.getenv("DB_USER", "root"),
+            password=os.getenv("DB_PASS", "password"),
+            port=os.getenv("DB_PORT", "5432"),
+        )
+        
+        with conn.cursor() as cur:
+            # ✅ FIXED: Use the correct column names that match existing table
+            cur.execute("""
+                INSERT INTO devconnect.sent_emails 
+                (job_id, to_email, subject, body, sent_at)
+                VALUES (%s, %s, %s, %s, NOW())
+            """, [
+                job_id,
+                "muheetrahi@gmail.com",  # Match the actual email being sent
+                f"New Shortlisted Candidates for {job_title}",
+                f"Shortlisted {shortlisted_count} candidates for {job_title} position (Job ID: {job_id})"
+            ])
+            
+            conn.commit()
+            print(f"✅ Saved shortlist email info to database for job {job_id}")
+            
+    except Exception as e:
+        print(f"❌ Failed to save email info to database: {e}")
+        import traceback
+        traceback.print_exc()
+    finally:
+        if conn:
+            conn.close()
+
 
 # ────────── Graph ──────────
 builder = StateGraph(ShortlistState)
