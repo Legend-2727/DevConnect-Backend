@@ -43,7 +43,7 @@ jobs:
             
             echo "Setting up environment variables..."
             # Application service .env
-            cat > DevConnect-Backend/application-service/.env << EOL
+            cat > DevConnect-Backend/services/application-service/.env << EOL
             DB_USER=root
             DB_HOST=db
             DB_NAME=main
@@ -53,7 +53,7 @@ jobs:
             EOL
             
             # Auth service .env
-            cat > DevConnect-Backend/auth-service/.env << EOL
+            cat > DevConnect-Backend/services/auth-service/.env << EOL
             DATABASE_URL=postgres://root:password@db:5432/main
             FRONTEND=http://98.70.42.26
             EOL
