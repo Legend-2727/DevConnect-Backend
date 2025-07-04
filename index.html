@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>User Profile Creation</title>
+</head>
+<body>
+  <h2>Create User Profile</h2>
+
+  <form id="userForm" enctype="multipart/form-data">
+    <label>Account ID: <input type="number" name="accountId" required /></label><br /><br />
+    <label>Name: <input type="text" name="name" required /></label><br /><br />
+    <label>Education Level:
+      <select name="education_level">
+        <option>Undergraduate</option>
+        <option>Graduate</option>
+        <option>Postgraduate</option>
+      </select>
+    </label><br /><br />
+    <label>Experience Level:
+      <select name="experience_level">
+        <option>Fresher</option>
+        <option>1-3 years</option>
+        <option>3+ years</option>
+      </select>
+    </label><br /><br />
+    <label>Preferred Roles (comma separated): <input type="text" name="preferred_roles" /></label><br /><br />
+    <label>Upload CV (PDF): <input type="file" name="cv" accept=".pdf" required /></label><br /><br />
+
+    <button type="submit">Submit</button>
+  </form>
+
+  <p id="responseMsg"></p>
+
+  <script>
+    document.getElementById('userForm').addEventListener('submit', async function (e) {
+      e.preventDefault();
+
+      const form = e.target;
+      const formData = new FormData();
+      const roles = form.preferred_roles.value.split(',').map(r => r.trim());
+
+      // 1. Create user
+      const userData = {
+        accountId: form.accountId.value,
+        name: form.name.value,
+        education_level: form.education_level.value,
+        experience_level: form.experience_level.value,
+        preferred_roles: roles
+      };
+
+      const createUserRes = await fetch('http://localhost:4002/api/v1/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(userData)
+      });
+
+      const userJson = await createUserRes.json();
+      const userId = userJson.userId;
+
+      // 2. Upload CV
+      formData.append('cv', form.cv.files[0]);
+      const uploadRes = await fetch(`http://localhost:4002/api/v1/users/${userId}/cv`, {
+        method: 'POST',
+        body: formData
+      });
+
+      const uploadJson = await uploadRes.json();
+      document.getElementById('responseMsg').innerText = `✅ Profile created. CV URL: ${uploadJson.cvURL}`;
+    });
+  </script>
+</body>
+</html>

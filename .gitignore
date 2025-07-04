@@ -6,3 +6,70 @@ uploads/
 services/**/node_modules/
 services/**/.env
 
+# Node.js
+node_modules/
+services/**/node_modules/
+
+# Environment files
+.env
+services/**/.env
+
+# Logs
+*.log
+
+# Database data
+pgdata/
+
+
+
+# Python specific (ADD THESE)
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+.venv/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# AI/ML specific
+*.pkl
+*.model
+*.h5
+*.pt
+*.pth
+.vector_cache/
+.cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+.tmp/
