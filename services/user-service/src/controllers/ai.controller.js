@@ -109,7 +109,7 @@
 
 import axios from 'axios';
 import path from 'path';
-import db from '../db/index.js';
+import db from '../db.js';
 
 export const runLangGraph = async (req, res) => {
   const { userId } = req.params;

@@ -1,8 +1,8 @@
-<<<<<<< HEAD
 // services/user-service/src/server.js
 import express  from "express";
 import cors     from "cors";
 import db       from "./db.js";   // ← adjust if your path differs
+import aiRoutes from "./routes/ai.routes.js";
 
 const app  = express();
 const PORT = process.env.PORT || 4004;
@@ -10,6 +10,9 @@ const PORT = process.env.PORT || 4004;
 /* ───────────────────────── middleware ─────────────────────────── */
 app.use(cors());
 app.use(express.json());                      // parse JSON bodies
+
+/* ──────────────────────── AI routes ────────────────────────── */
+app.use('/api/ai', aiRoutes);
 
 /* ──────────────────────── health-checks ───────────────────────── */
 app.get("/health", (_req, res) => res.sendStatus(200));
