@@ -45,6 +45,45 @@ export const triggerShortlistAI = async (req, res) => {
   });
 };
 
+// Test database connectivity
+export const testDB = async (req, res) => {
+  try {
+    const result = await db.query('SELECT 1 as test');
+    res.status(200).json({ success: true, test: result.rows[0] });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// Browse all jobs (for users to see available jobs)
+export const browseJobs = async (req, res) => {
+  try {
+    const result = await db.query(`
+      SELECT 
+        j.id,
+        j.title,
+        j.description,
+        j.skills,
+        j.employment_type,
+        j.location,
+        j.deadline,
+        j.posted_at,
+        c.name as company_name
+      FROM devconnect.jobs j
+      JOIN devconnect.companies c ON j.company_id = c.id
+      ORDER BY j.posted_at DESC
+    `);
+    
+    res.status(200).json({ 
+      success: true, 
+      jobs: result.rows 
+    });
+  } catch (err) {
+    console.error('Browse jobs error:', err.message);
+    res.status(500).json({ error: 'Failed to fetch jobs', details: err.message });
+  }
+};
+
 // 4. Placeholder: Schedule Interviews for shortlisted
 export const scheduleInterview = async (req, res) => {
   const { job_id, application_id, slot } = req.body;

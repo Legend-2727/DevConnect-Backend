@@ -4,7 +4,9 @@ import {
   getUser,
   updateUser,
   uploadCV,
-  getSignupMetadata
+  getSignupMetadata,
+  getUserProfile,
+  getUserStats
 } from '../controllers/user.controller.js';
 import { authenticate } from '../middlewares/auth.middleware.js';
 import { upload } from '../middlewares/upload.middleware.js';
@@ -15,6 +17,8 @@ const router = Router();
 router.get('/register/user', getSignupMetadata);
 router.post('/', createUser);
 router.get('/:userId', authenticate, getUser);
+router.get('/profile/:userId', getUserProfile);
+router.get('/stats/:userId', getUserStats);
 router.put('/:userId', authenticate, updateUser);
 // router.post('/:userId/cv', authenticate, upload.single('cv'), uploadCV);
 router.post('/:userId/cv', /* authenticate, */ upload.single('cv'), uploadCV);

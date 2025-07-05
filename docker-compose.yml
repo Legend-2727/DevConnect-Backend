@@ -58,7 +58,7 @@ services:
       - ./services/user-service/.env
     depends_on:
       - db
-      - ai-service  # 🔥 ADD this to wait for ai-service
+      - ai-service
     networks:
       - app_network
     healthcheck:
@@ -66,38 +66,6 @@ services:
       interval: 5s
       timeout: 30s
       retries: 3
-
-  company-service:
-    build: ./services/company-service          # ← Dockerfile lives here
-    ports:
-      - "4002:4002"                            # expose externally on :4002
-    volumes:
-      - ./services/company-service:/app        # live-reload during dev
-      # - /app/node_modules                      # keep host node_modules out
-      - ./uploads:/app/uploads                 # share CV files if needed
-    command: npm run dev                       # or `npm start` for prod
-    env_file:
-      - ./services/company-service/.env        # DB + SMTP creds
-    depends_on:
-      - db
-      - ai-service                             # needs /shortlist endpoint
-    networks:
-      - app_network
-
-  ai-service:
-    build: ./services/ai-service
-    ports:
-      - "8000:8000"  # 🔥 Expose FastAPI port
-    volumes:
-      - ./services/ai-service:/app
-      - ./uploads:/app/uploads
-    command: uvicorn app:app --host 0.0.0.0 --port 8000  # 🔥 Replace sleep
-    env_file:
-      - ./services/ai-service/.env
-    depends_on:
-      - db
-    networks:
-      - app_network
 
   frontend:
     container_name: frontend
@@ -122,6 +90,37 @@ services:
         condition: service_healthy
     env_file:
       - ../devconnect-frontend/.env
+    networks:
+      - app_network
+
+  company-service:
+    build: ./services/company-service
+    ports:
+      - "4002:4002"
+    volumes:
+      - ./services/company-service:/app
+      - ./uploads:/app/uploads
+    command: npm run dev
+    env_file:
+      - ./services/company-service/.env
+    depends_on:
+      - db
+      - ai-service
+    networks:
+      - app_network
+
+  ai-service:
+    build: ./services/ai-service
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./services/ai-service:/app
+      - ./uploads:/app/uploads
+    command: uvicorn app:app --host 0.0.0.0 --port 8000  # 🔥 Replace sleep
+    env_file:
+      - ./services/ai-service/.env
+    depends_on:
+      - db
     networks:
       - app_network
 

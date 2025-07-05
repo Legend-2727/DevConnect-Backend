@@ -212,7 +212,7 @@ CREATE TABLE IF NOT EXISTS devconnect.cv_customizations (
 );
 
 
--- Add user profile columns
+<<<<<<< HEAD
 ALTER TABLE devconnect.users
 ADD COLUMN bio TEXT;
 
@@ -220,7 +220,7 @@ ALTER TABLE devconnect.users
 ADD COLUMN website TEXT;
 
 ALTER TABLE devconnect.users ADD COLUMN description TEXT;
-
+=======
 -- 1️⃣ Who are the interviewers?
 CREATE TABLE IF NOT EXISTS devconnect.interviewers (
   id SERIAL PRIMARY KEY,
@@ -237,6 +237,7 @@ CREATE TABLE IF NOT EXISTS devconnect.job_interviewers (
   interviewer_id INTEGER NOT NULL REFERENCES devconnect.interviewers(id) ON DELETE CASCADE,
   PRIMARY KEY (job_id, interviewer_id)
 );
+
 
 -- Add interview scheduling tables
 CREATE TABLE devconnect.interviews (
@@ -263,3 +264,4 @@ CREATE TABLE devconnect.interview_scheduling_logs (
     status VARCHAR(50), -- SUCCESS, FAILED, NO_REPLIES
     created_at TIMESTAMP DEFAULT NOW()
 );
+>>>>>>> origin/ahonsecond

@@ -136,11 +136,35 @@ export const validateLogin = async (req, res) => {
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
-    // 4. success payload
+    // 4. success payload - get the actual user/company ID and name
+    let profileId = account.id; // fallback to account ID
+    let name = account.email; // fallback to email
+    
+    if (account.account_type === 'User') {
+      const userResult = await db.query(
+        "SELECT id, name FROM devconnect.users WHERE account_id = $1",
+        [account.id]
+      );
+      if (userResult.rows.length > 0) {
+        profileId = userResult.rows[0].id;
+        name = userResult.rows[0].name || account.email;
+      }
+    } else if (account.account_type === 'Company') {
+      const companyResult = await db.query(
+        "SELECT id, name FROM devconnect.companies WHERE account_id = $1",
+        [account.id]
+      );
+      if (companyResult.rows.length > 0) {
+        profileId = companyResult.rows[0].id;
+        name = companyResult.rows[0].name || account.email;
+      }
+    }
+    
     return res.status(200).json({
       success: true,
-      id: account.id,
+      id: profileId, // This is now the user/company ID, not account ID
       email: account.email,
+      name: name,
       role: account.account_type,
       redirectURL:
         account.account_type === "User"

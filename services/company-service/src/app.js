@@ -11,11 +11,19 @@
 // export default app;
 
 import express from 'express';
+import cors from 'cors';
 import companyRoutes from './routes/company.routes.js';
 import aiRoutes from './routes/ai.routes.js';
 import morgan from 'morgan';
 
 const app = express();
+
+// CORS configuration
+app.use(cors({
+  origin: ['http://localhost:3000', 'http://localhost:3333', 'http://frontend:3000'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  credentials: true
+}));
 
 // Middleware
 app.use(express.json());

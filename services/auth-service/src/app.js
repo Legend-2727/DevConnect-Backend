@@ -8,13 +8,19 @@ const app = express();
 
 // Recommended CORS setup
 app.use(cors({
-  origin: process.env.FRONTEND || 'http://localhost:3000', // your frontend's origin
+  origin: ['http://localhost:3000', 'http://localhost:3333', 'http://frontend:3000'], // Allow multiple origins
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   credentials: true
 }));
 
 app.use(express.json());
 app.use(cookieParser()); // ⬅️ Must come BEFORE routes
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.status(200).send('OK');
+});
+
 app.use('/api/v1/auth', authRoutes);
 
 export default app;
