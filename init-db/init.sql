@@ -211,16 +211,11 @@ CREATE TABLE IF NOT EXISTS devconnect.cv_customizations (
   UNIQUE (user_id, job_id)
 );
 
+-- Add additional user fields
+ALTER TABLE devconnect.users ADD COLUMN IF NOT EXISTS bio TEXT;
+ALTER TABLE devconnect.users ADD COLUMN IF NOT EXISTS website TEXT;
+ALTER TABLE devconnect.users ADD COLUMN IF NOT EXISTS description TEXT;
 
-<<<<<<< HEAD
-ALTER TABLE devconnect.users
-ADD COLUMN bio TEXT;
-
-ALTER TABLE devconnect.users
-ADD COLUMN website TEXT;
-
-ALTER TABLE devconnect.users ADD COLUMN description TEXT;
-=======
 -- 1️⃣ Who are the interviewers?
 CREATE TABLE IF NOT EXISTS devconnect.interviewers (
   id SERIAL PRIMARY KEY,
@@ -238,9 +233,8 @@ CREATE TABLE IF NOT EXISTS devconnect.job_interviewers (
   PRIMARY KEY (job_id, interviewer_id)
 );
 
-
 -- Add interview scheduling tables
-CREATE TABLE devconnect.interviews (
+CREATE TABLE IF NOT EXISTS devconnect.interviews (
     id SERIAL PRIMARY KEY,
     job_id INTEGER REFERENCES devconnect.jobs(id),
     candidate_user_id INTEGER REFERENCES devconnect.users(id),
@@ -254,7 +248,7 @@ CREATE TABLE devconnect.interviews (
     updated_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE TABLE devconnect.interview_scheduling_logs (
+CREATE TABLE IF NOT EXISTS devconnect.interview_scheduling_logs (
     id SERIAL PRIMARY KEY,
     job_id INTEGER REFERENCES devconnect.jobs(id),
     interviewer_email VARCHAR(255),
@@ -264,4 +258,3 @@ CREATE TABLE devconnect.interview_scheduling_logs (
     status VARCHAR(50), -- SUCCESS, FAILED, NO_REPLIES
     created_at TIMESTAMP DEFAULT NOW()
 );
->>>>>>> origin/ahonsecond

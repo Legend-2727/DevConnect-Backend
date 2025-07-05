@@ -310,18 +310,18 @@ def init_scheduler():
         
         scheduler.add_job(
             func=background_interview_monitoring,
-            trigger=IntervalTrigger(minutes=2),
+            trigger=IntervalTrigger(minutes=60),  # Changed from 2 minutes to 60 minutes to conserve API quota
             id='interview_monitoring',
             name='Automated Interview Monitoring',
             replace_existing=True
         )
         
         scheduler.start()
-        print(" Scheduler started at module level - will check every 2 minutes")
+        print(" Scheduler started at module level - will check every 60 minutes (API quota conservation)")
         
         
         print(" Running initial background check...")
-        background_interview_monitoring()
+        # background_interview_monitoring()  # Commented out to conserve API quota
         
     except Exception as e:
         print(f" Module scheduler error: {e}")

@@ -99,3 +99,60 @@ export const scheduleInterview = async (req, res) => {
     res.status(500).json({ error: 'Failed to schedule interview' });
   }
 };
+
+// Get applications for a specific job
+export const getJobApplications = async (req, res) => {
+  const { jobId } = req.params;
+  try {
+    const result = await db.query(`
+      SELECT 
+        a.id,
+        a.user_id,
+        a.status,
+        a.applied_at,
+        u.name as user_name,
+        acc.email as user_email,
+        u.cv_url
+      FROM devconnect.applications a
+      JOIN devconnect.users u ON a.user_id = u.id
+      JOIN devconnect.accounts acc ON u.account_id = acc.id
+      WHERE a.job_id = $1
+      ORDER BY a.applied_at DESC
+    `, [jobId]);
+
+    res.status(200).json({
+      success: true,
+      applications: result.rows
+    });
+  } catch (err) {
+    console.error('Error fetching applications:', err);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to fetch applications' 
+    });
+  }
+};
+
+// Get application count for a specific job
+export const getJobApplicationCount = async (req, res) => {
+  const { jobId } = req.params;
+  try {
+    const result = await db.query(`
+      SELECT COUNT(*) as count
+      FROM devconnect.applications
+      WHERE job_id = $1
+    `, [jobId]);
+
+    res.status(200).json({
+      success: true,
+      count: parseInt(result.rows[0].count)
+    });
+  } catch (err) {
+    console.error('Error fetching application count:', err);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Failed to fetch application count',
+      count: 0
+    });
+  }
+};

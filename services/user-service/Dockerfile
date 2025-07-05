@@ -6,10 +6,6 @@ WORKDIR /app
 
 # Copy package files first for layer caching
 COPY package*.json ./
-<<<<<<< HEAD
-RUN npm install -g nodemon && npm install
-=======
->>>>>>> origin/ahonsecond
 
 # Install dependencies before copying app code
 RUN npm install && npm install -g nodemon

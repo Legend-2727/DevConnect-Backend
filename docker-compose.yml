@@ -116,6 +116,7 @@ services:
     volumes:
       - ./services/ai-service:/app
       - ./uploads:/app/uploads
+      - ./sample-cvs:/app/sample-cvs
     command: uvicorn app:app --host 0.0.0.0 --port 8000  # 🔥 Replace sleep
     env_file:
       - ./services/ai-service/.env
