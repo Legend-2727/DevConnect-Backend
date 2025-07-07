@@ -1,4 +1,4 @@
-version: '3.8'
+# version: '3.8'
 
 services:
   auth-service:
@@ -13,7 +13,8 @@ services:
     env_file:
       - ./services/auth-service/.env
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     networks:
       - app_network
     healthcheck:
@@ -34,7 +35,8 @@ services:
     env_file:
       - ./services/application-service/.env
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     networks:
       - app_network
     healthcheck:
@@ -51,6 +53,7 @@ services:
     volumes:
       - ./services/user-service:/app
       - /app/node_modules
+      - ./uploads:/app/uploads  # Persistent volume for uploaded files
     command: npm run dev
     env_file:
       - ./services/user-service/.env
@@ -64,6 +67,29 @@ services:
       timeout: 30s
       retries: 3
 
+  company-service:
+    container_name: company-service
+    build: ./services/company-service
+    ports:
+      - "4005:4005"
+    volumes:
+      - ./services/company-service:/app
+      - /app/node_modules
+      - ./uploads:/app/uploads  # Persistent volume for uploaded files
+    command: npm run dev
+    env_file:
+      - ./services/company-service/.env
+    depends_on:
+      - db
+    networks:
+      - app_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4005/health"]
+      interval: 1m30s
+      timeout: 30s
+      retries: 5
+      start_period: 30s
+
   frontend:
     container_name: frontend
     environment:
@@ -72,7 +98,7 @@ services:
       context: ../devconnect-frontend
       dockerfile: Dockerfile.dev
     ports:
-      - "80:3000"
+      - "3000:3000"
     volumes:
       - ../devconnect-frontend:/app
       - /app/node_modules
@@ -84,6 +110,8 @@ services:
       user-service:
         condition: service_healthy
       application-service:
+        condition: service_healthy
+      company-service:
         condition: service_healthy
     env_file:
       - ../devconnect-frontend/.env
@@ -106,7 +134,7 @@ services:
     networks:
       - app_network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U root"]
+      test: ["CMD-SHELL", "pg_isready -U root -d main"]
       interval: 5s
       timeout: 5s
       retries: 5

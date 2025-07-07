@@ -1,5 +1,7 @@
 import jwt from 'jsonwebtoken';
 
+const JWT_SECRET = process.env.JWT_SECRET || "devconnectsecret";
+
 export const authenticate = (req, res, next) => {
   const token = req.cookies?.token;
 
@@ -8,7 +10,7 @@ export const authenticate = (req, res, next) => {
   }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, JWT_SECRET);
     req.user = decoded; // Now available in route handler
     next();
   } catch (err) {
