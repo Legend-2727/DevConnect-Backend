@@ -72,11 +72,22 @@ export const registerAccount = async (req, res) => {
       maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
+    // Determine redirect URL based on account type (same logic as login)
+    let redirectURL;
+    if (accountType === "User") {
+      // New user accounts won't have profiles, so redirect to profile creation
+      redirectURL = "/user/profile";
+    } else {
+      // New company accounts won't have profiles, so redirect to profile creation
+      redirectURL = "/company/profile";
+    }
+
     return res.status(201).json({
       success: true,
       message: "Account created successfully",
       accountId,
       role: accountType,
+      redirectURL: redirectURL,
     });
   } catch (err) {
     if (client) await client.query("ROLLBACK");
