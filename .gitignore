@@ -5,4 +5,4 @@ pgdata/
 uploads/
 services/**/node_modules/
 services/**/.env
-
+services/**/coverage
