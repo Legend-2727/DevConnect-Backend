@@ -6,7 +6,31 @@ on:
   workflow_dispatch:
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # Add all your service directories here
+        service: ['auth-service', 'company-service', 'user-service', 'application-service']
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install dependencies and run tests for ${{ matrix.service }}
+        run: |
+          echo "--- Testing ${{ matrix.service }} ---"
+          cd services/${{ matrix.service }}
+          npm install
+          npm test --if-present # Use --if-present so it doesn't fail on services without tests yet
+  
   deploy:
+    needs: test
     runs-on: ubuntu-latest
 
     steps:
