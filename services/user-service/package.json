@@ -11,6 +11,14 @@
     "pg": "^8.16.2"
   },
   "scripts": {
-    "dev": "nodemon src/server.js"
+    "dev": "nodemon src/server.js",
+    "test": "jest",
+    "test:watch": "jest --watchAll",
+    "test:coverage": "jest --coverage"
+  },
+  "devDependencies": {
+    "jest": "^30.0.4",
+    "jest-extended": "^6.0.0",
+    "supertest": "^7.1.3"
   }
 }

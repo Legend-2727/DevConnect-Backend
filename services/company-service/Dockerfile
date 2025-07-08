@@ -17,7 +17,7 @@ RUN apt-get update && apt-get install -y python3 python3-pip
 COPY . .
 
 # Expose service port
-EXPOSE 4002
+EXPOSE 4005
 
 # Start dev server (like nodemon src/server.js)
 CMD ["npm", "run", "dev"]
