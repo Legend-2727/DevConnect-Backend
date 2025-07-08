@@ -61,60 +61,64 @@ jobs:
               cd ..
             fi
             
-            # if [ ! -d "devconnect-frontend" ]; then
-            #   git clone https://github.com/OitijhyaHoque/devconnect-frontend.git
-            #   cd devconnect-frontend
-            #   git checkout deploytest
-            #   cd ..
-            # else
-            #   cd devconnect-frontend
-            #   git checkout deploytest
-            #   git pull origin deploytest
-            #   cd ..
-            # fi
-            
             echo "Setting up environment variables..."
             # Application service .env
             cat > DevConnect-Backend/services/application-service/.env << EOL
-            DB_USER=root
-            DB_HOST=db
-            DB_NAME=main
-            DB_PASS=password
-            DB_PORT=5432
-            FRONTEND=http://98.70.42.26
             PORT=4003
+            DB_USER=root
+            DB_PASS=password
+            DB_HOST=db
+            DB_PORT=5432
+            DB_NAME=main
             DATABASE_URL=postgres://root:password@db:5432/main
             JWT_SECRET=supersecret
+            FRONTEND=http://98.70.42.26
             EOL
             
             # Auth service .env
             cat > DevConnect-Backend/services/auth-service/.env << EOL
-            DATABASE_URL=postgres://root:password@db:5432/main
-            FRONTEND=http://98.70.42.26
             PORT=4000
-            JWT_SECRET=supersecret
+            DB_USER=root
+            DB_PASS=password
+            DB_HOST=db
+            DB_PORT=5432
+            DB_NAME=main
+            DATABASE_URL=postgres://root:password@db:5432/main
+            JWT_SECRET=devconnectsecret
+            FRONTEND=http://98.70.42.26
             EOL
 
             # User service .env
             cat > DevConnect-Backend/services/user-service/.env << EOL
             PORT=4004
+            DB_USER=root
+            DB_PASS=password
+            DB_HOST=db
+            DB_PORT=5432
+            DB_NAME=main
             DATABASE_URL=postgres://root:password@db:5432/main
-            JWT_SECRET=supersecret
+            JWT_SECRET=devconnectsecret
             FRONTEND=http://98.70.42.26
             EOL
             
-            # # Frontend .env
-            # cat > devconnect-frontend/.env << EOL
-            # NEXT_PUBLIC_API_BASE_URL=http://auth-service:4000
-            # NEXT_PUBLIC_APP_BASE_URL=http://application-service:4003
-            # NEXTAUTH_SECRET=your-secret-here
-            # NEXT_PUBLIC_AUTH_REGISTER_URL=http://98.70.42.26:4000/api/v1/auth/register
-            # EOL
+            # Company service .env
+            cat > DevConnect-Backend/services/company-service/.env << EOL
+            PORT=4005
+            JWT_SECRET=devconnectsecret
+            FRONTEND=http://98.70.42.26
+            SMTP_HOST=smtp.example.com
+            SMTP_PORT=587
+            SMTP_USER=apikey_or_username
+            SMTP_PASS=secret
+            SMTP_FROM=no-reply@devconnect.ai
+            DATABASE_URL=postgresql://root:password@db:5432/main
+            AI_SERVICE_URL=http://ai-service:8000
+            UPLOAD_BASE_PATH=./uploads
+            EOL
             
             echo "Rebuilding and restarting Docker containers..."
             cd DevConnect-Backend
             sudo docker-compose down
-            # docker system prune -a --volumes -f
             sudo docker-compose up --build -d
             
             echo "Deployment completed successfully!"
