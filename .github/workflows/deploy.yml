@@ -11,7 +11,7 @@ jobs:
     strategy:
       matrix:
         # Add all your service directories here
-        service: ['auth-service', 'company-service', 'user-service', 'application-service']
+        service: ['auth-service', 'company-service', 'user-service']
     
     steps:
       - name: Checkout code
