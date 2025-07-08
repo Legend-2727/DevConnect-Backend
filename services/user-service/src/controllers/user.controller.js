@@ -274,6 +274,44 @@ export const getUser = async (req, res) => {
 // Middleware for handling file upload
 export const uploadCV = upload.single('cv');
 
+// CV upload handler function (with auth)
+export const handleCVUploadAuth = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    // Get user ID from JWT token
+    const token = req.cookies.token;
+    if (!token) {
+      return res.status(401).json({ error: 'No token provided' });
+    }
+
+    const decoded = jwt.verify(token, JWT_SECRET);
+    const userId = decoded.id;
+
+    const cv_url = `/uploads/cvs/${req.file.filename}`;
+
+    // Update user's CV URL in database
+    await db.query(
+      'UPDATE devconnect.users SET cv_url = $1 WHERE account_id = $2',
+      [cv_url, userId]
+    );
+
+    // Return full URL for frontend
+    const fullCvUrl = `http://localhost:4004${cv_url}`;
+
+    res.json({ 
+      success: true, 
+      cv_url: fullCvUrl,
+      message: 'CV uploaded successfully' 
+    });
+  } catch (error) {
+    console.error('CV upload error:', error);
+    res.status(500).json({ error: 'Failed to upload CV' });
+  }
+};
+
 // CV upload handler function
 export const handleCVUpload = async (req, res) => {
   try {

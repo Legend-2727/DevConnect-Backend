@@ -90,6 +90,29 @@ services:
       retries: 5
       start_period: 30s
 
+  ai-service:
+    container_name: ai-service
+    build: ./services/ai-service
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./services/ai-service:/app
+      - ./uploads:/app/uploads  # Persistent volume for uploaded files
+      - ./services/ai-service/sample-cvs:/app/sample-cvs  # CV samples
+    command: python app.py
+    env_file:
+      - ./services/ai-service/.env
+    depends_on:
+      - db
+    networks:
+      - app_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
   frontend:
     container_name: frontend
     environment:
@@ -112,6 +135,8 @@ services:
       application-service:
         condition: service_healthy
       company-service:
+        condition: service_healthy
+      ai-service:
         condition: service_healthy
     env_file:
       - ../devconnect-frontend/.env

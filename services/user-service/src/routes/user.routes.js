@@ -4,6 +4,7 @@ import {
   getUser,
   uploadCV,
   handleCVUpload,
+  handleCVUploadAuth,
   getSignupMetadata,
   getUserProfile,
   createUserProfile
@@ -20,7 +21,10 @@ router.post('/', createUser);
 router.get('/profile', getUserProfile);
 router.post('/profile', uploadCV, createUserProfile);
 
-// CV upload route
+// CV upload route (authenticated)
+router.post('/upload-cv', uploadCV, handleCVUploadAuth);
+
+// CV upload route (legacy)
 router.post('/:userId/cv', uploadCV, handleCVUpload);
 
 // User routes (keep this last to avoid conflicts)

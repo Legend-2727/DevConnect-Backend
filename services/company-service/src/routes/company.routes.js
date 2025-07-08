@@ -12,7 +12,9 @@ import {
   createInterviewer,
   getCompanyInterviewers,
   assignInterviewersToJob,
-  getJobInterviewers
+  getJobInterviewers,
+  getJobApplications,
+  bulkUpdateApplicationStatus
 } from '../controllers/company.controller.js';
 
 const router = express.Router();
@@ -28,6 +30,8 @@ router.post('/upload-logo', logoUpload, uploadLogo);
 // Job routes
 router.post('/jobs', createJob);
 router.get('/jobs/:companyId', getCompanyJobs);
+router.get('/jobs/:jobId/applications', getJobApplications);
+router.put('/jobs/:jobId/applications/bulk-update', bulkUpdateApplicationStatus);
 router.post('/jobs/:jobId/shortlist', triggerShortlistAI);
 router.post('/interviews/schedule', scheduleInterview);
 

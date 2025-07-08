@@ -575,3 +575,136 @@ export const getJobInterviewers = async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch job interviewers' });
   }
 };
+
+// Get applications for a specific job
+export const getJobApplications = async (req, res) => {
+  try {
+    console.log('getJobApplications called');
+    console.log('Params:', req.params);
+    console.log('Cookies:', req.cookies);
+
+    const token = req.cookies?.token;
+    if (!token) {
+      return res.status(401).json({ error: 'Unauthorized - No token' });
+    }
+
+    const decoded = jwt.verify(token, JWT_SECRET);
+    const userId = decoded.id;
+    const { jobId } = req.params;
+
+    // Verify that the job belongs to the current company
+    const jobResult = await db.query(`
+      SELECT j.id, j.title FROM devconnect.jobs j
+      JOIN devconnect.companies c ON j.company_id = c.id
+      WHERE j.id = $1 AND c.account_id = $2
+    `, [jobId, userId]);
+
+    if (jobResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Job not found or access denied' });
+    }
+
+    // Get all applications for this job with user details
+    const result = await db.query(`
+      SELECT 
+        a.id,
+        a.job_id,
+        a.user_id,
+        a.status,
+        a.applied_at,
+        a.updated_at,
+        u.name as user_name,
+        u.education_level,
+        u.experience_level,
+        u.cv_url,
+        acc.email as user_email
+      FROM devconnect.applications a
+      JOIN devconnect.users u ON a.user_id = u.id
+      JOIN devconnect.accounts acc ON u.account_id = acc.id
+      WHERE a.job_id = $1
+      ORDER BY a.applied_at DESC
+    `, [jobId]);
+
+    res.json({
+      success: true,
+      job: jobResult.rows[0],
+      applications: result.rows,
+      count: result.rows.length
+    });
+  } catch (error) {
+    console.error('Get job applications error:', error);
+    res.status(500).json({ error: 'Failed to fetch job applications' });
+  }
+};
+
+// Bulk update application statuses (for AI shortlisting acceptance)
+export const bulkUpdateApplicationStatus = async (req, res) => {
+  try {
+    console.log('bulkUpdateApplicationStatus called');
+    console.log('Request body:', req.body);
+
+    const token = req.cookies?.token;
+    if (!token) {
+      return res.status(401).json({ error: 'Unauthorized - No token' });
+    }
+
+    const decoded = jwt.verify(token, JWT_SECRET);
+    const userId = decoded.id;
+    const { jobId } = req.params;
+    const { acceptedApplicationIds, rejectedApplicationIds } = req.body;
+
+    // Verify that the job belongs to the current company
+    const jobResult = await db.query(`
+      SELECT j.id, j.title FROM devconnect.jobs j
+      JOIN devconnect.companies c ON j.company_id = c.id
+      WHERE j.id = $1 AND c.account_id = $2
+    `, [jobId, userId]);
+
+    if (jobResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Job not found or access denied' });
+    }
+
+    // Start transaction
+    await db.query('BEGIN');
+
+    try {
+      // Update accepted applications
+      if (acceptedApplicationIds && acceptedApplicationIds.length > 0) {
+        const acceptQuery = `
+          UPDATE devconnect.applications 
+          SET status = 'ACCEPTED', updated_at = CURRENT_TIMESTAMP
+          WHERE id = ANY($1) AND job_id = $2
+          RETURNING id, user_id
+        `;
+        await db.query(acceptQuery, [acceptedApplicationIds, jobId]);
+      }
+
+      // Update rejected applications
+      if (rejectedApplicationIds && rejectedApplicationIds.length > 0) {
+        const rejectQuery = `
+          UPDATE devconnect.applications 
+          SET status = 'REJECTED', updated_at = CURRENT_TIMESTAMP
+          WHERE id = ANY($1) AND job_id = $2
+          RETURNING id, user_id
+        `;
+        await db.query(rejectQuery, [rejectedApplicationIds, jobId]);
+      }
+
+      // Commit transaction
+      await db.query('COMMIT');
+
+      res.json({
+        success: true,
+        message: 'Application statuses updated successfully',
+        accepted_count: acceptedApplicationIds?.length || 0,
+        rejected_count: rejectedApplicationIds?.length || 0
+      });
+    } catch (error) {
+      // Rollback transaction on error
+      await db.query('ROLLBACK');
+      throw error;
+    }
+  } catch (error) {
+    console.error('Bulk update application status error:', error);
+    res.status(500).json({ error: 'Failed to update application statuses' });
+  }
+};
