@@ -94,7 +94,7 @@ services:
     container_name: ai-service
     build: ./services/ai-service
     ports:
-      - "8000:8000"
+      - "4002:8000"
     volumes:
       - ./services/ai-service:/app
       - ./uploads:/app/uploads  # Persistent volume for uploaded files

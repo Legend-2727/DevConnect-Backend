@@ -1,0 +1,14 @@
+langgraph
+langchain
+langchain-openai
+pypdf2
+psycopg2-binary
+tqdm
+python-dotenv
+tiktoken
+langchain_google_genai
+google-generativeai
+fastapi
+uvicorn
+fpdf
+apscheduler==3.10.4
