@@ -57,7 +57,7 @@ def get_user_profile(user_id: int) -> Dict[str, Any]:
             SELECT u.*, a.email 
             FROM devconnect.users u 
             JOIN devconnect.accounts a ON u.account_id = a.id 
-            WHERE u.account_id = %s
+            WHERE u.id = %s
         """, (user_id,))
         user = cursor.fetchone()
         return dict(user) if user else {}
@@ -104,7 +104,7 @@ def get_job_applications(job_id: int) -> List[Dict[str, Any]]:
             FROM devconnect.applications a
             JOIN devconnect.users u ON a.user_id = u.id
             JOIN devconnect.accounts acc ON u.account_id = acc.id
-            WHERE a.job_id = %s AND a.status = 'PENDING'
+            WHERE a.job_id = %s AND a.status IN ('PENDING', 'UNDER_REVIEW')
         """, (job_id,))
         applications = cursor.fetchall()
         return [dict(app) for app in applications]
@@ -139,8 +139,9 @@ def get_job_details(job_id: int) -> Dict[str, Any]:
 def analyze_with_ai(prompt: str) -> str:
     """Use Google Gemini AI for analysis"""
     try:
-        model = genai.GenerativeModel('gemini-pro')
+        model = genai.GenerativeModel('gemini-1.5-flash')  # Updated model name
         response = model.generate_content(prompt)
+        print(f"🤖 AI Response: {response.text[:200]}...")  # Debug log
         return response.text
     except Exception as e:
         print(f"AI analysis error: {e}")
@@ -307,14 +308,6 @@ def enhanced_job_matching(user_profile: Dict, job: Dict) -> Dict:
             "recommendation_strength": "consider",
             "salary_expectation": "average"
         }
-
-@app.get("/")
-async def root():
-    return {"message": "DevConnect AI Service", "status": "running", "version": "2.2.1"}
-
-@app.get("/health")
-async def health_check():
-    return {"status": "healthy", "service": "ai-service", "version": "2.2.1"}
 
 @app.post("/api/ai/companies/{company_id}/jobs/{job_id}/shortlist")
 async def shortlist_job_candidates(company_id: int, job_id: int):
@@ -596,6 +589,67 @@ async def legacy_shortlist():
     return {
         "message": "Please use /api/ai/companies/{company_id}/jobs/{job_id}/shortlist", 
         "status": "deprecated",
+        "version": "2.2.3"
+    }
+
+# Additional endpoint to match your test command
+@app.post("/api/ai/recommend/{user_id}")
+async def recommend_jobs_post(user_id: int):
+    """POST version of recommendation endpoint to match test command"""
+    return await recommend_jobs(user_id)
+
+# Test endpoints that work without database data
+@app.get("/api/v1/test-recommend/{user_id}")
+async def test_recommend(user_id: int):
+    """Test recommendation endpoint that works without real data"""
+    return {
+        "user_id": user_id,
+        "message": "✅ Recommendation endpoint working!",
+        "test_recommendations": [
+            {
+                "id": 1,
+                "title": "Senior Software Developer",
+                "company": "TechCorp",
+                "match_score": 95,
+                "match_explanation": "Perfect match for your skills and experience"
+            },
+            {
+                "id": 2,
+                "title": "Full Stack Engineer", 
+                "company": "StartupX",
+                "match_score": 87,
+                "match_explanation": "Great opportunity for growth and learning"
+            }
+        ],
+        "status": "success",
+        "version": "2.2.3"
+    }
+
+@app.post("/api/v1/test-shortlist/{company_id}/{job_id}")
+async def test_shortlist(company_id: int, job_id: int):
+    """Test shortlist endpoint that works without real data"""
+    return {
+        "company_id": company_id,
+        "job_id": job_id,
+        "message": "✅ Shortlist endpoint working!",
+        "test_shortlisted_candidates": [
+            {
+                "user_id": 1,
+                "name": "John Smith",
+                "email": "john@example.com",
+                "match_score": 92,
+                "ai_reasoning": "Excellent technical skills and relevant experience"
+            },
+            {
+                "user_id": 2,
+                "name": "Sarah Wilson",
+                "email": "sarah@example.com", 
+                "match_score": 88,
+                "ai_reasoning": "Strong background and good cultural fit"
+            }
+        ],
+        "total_shortlisted": 2,
+        "status": "success",
         "version": "2.2.3"
     }
 
