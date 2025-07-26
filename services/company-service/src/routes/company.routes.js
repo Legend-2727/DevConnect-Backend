@@ -14,6 +14,7 @@ import {
   assignInterviewersToJob,
   getJobInterviewers,
   getJobApplications,
+  getJobDetails,
   bulkUpdateApplicationStatus
 } from '../controllers/company.controller.js';
 
@@ -40,5 +41,6 @@ router.post('/interviewers', createInterviewer);
 router.get('/interviewers', getCompanyInterviewers);
 router.post('/jobs/:jobId/interviewers', assignInterviewersToJob);
 router.get('/jobs/:jobId/interviewers', getJobInterviewers);
+router.get('/jobs/:jobId', getJobDetails);
 
 export default router;

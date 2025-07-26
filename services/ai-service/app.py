@@ -12,6 +12,7 @@ from typing import List, Dict, Any
 from dotenv import load_dotenv
 import traceback
 from datetime import datetime, timedelta
+from fpdf import FPDF
 
 # Load environment variables
 load_dotenv()
@@ -24,7 +25,7 @@ app = FastAPI(title="DevConnect AI Service", version="2.2.3")
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
+    allow_origins=["http://localhost:3000"],  # Configure appropriately for production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -44,6 +45,149 @@ def get_db_connection():
     except Exception as e:
         print(f"Database connection error: {e}")
         return None
+    
+
+class ModifyCVRequest(BaseModel):
+    cv_url: str
+    job_role: str
+    company_id: int
+    job_id: int
+
+def extract_text_from_pdf(file_path):
+    from PyPDF2 import PdfReader
+    reader = PdfReader(file_path)
+    text = ""
+    for page in reader.pages:
+        text += page.extract_text() or ""
+    return text
+
+
+
+
+# def get_job_requirements(job_id):
+#     url = f"http://company-service:4005/api/v1/companies/jobs/{job_id}"
+#     resp = requests.get(url)
+#     if resp.status_code != 200:
+#         return ""
+#     job = resp.json().get("job", {})
+#     requirements = job.get("skills", [])
+#     description = job.get("description", "")
+#     return f"{description}\nSkills: {', '.join(requirements)}"
+
+def get_job_details(job_id: int) -> Dict[str, Any]:
+    """Fetch job details from the database by job_id"""
+    connection = get_db_connection()
+    if not connection:
+        print(f"Database connection failed for get_job_details({job_id})")
+        return {}
+    try:
+        cursor = connection.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cursor.execute("""
+            SELECT j.*, c.name as company_name, c.industry
+            FROM devconnect.jobs j
+            JOIN devconnect.companies c ON j.company_id = c.id
+            WHERE j.id = %s
+        """, (job_id,))
+        job = cursor.fetchone()
+        if job:
+            print(f"Fetched job details for job_id={job_id}: {job}")
+        else:
+            print(f"No job found for job_id={job_id}")
+        return dict(job) if job else {}
+    except Exception as e:
+        print(f"Error fetching job details for job_id={job_id}: {e}")
+        return {}
+    finally:
+        connection.close()
+
+def get_job_requirements(job_id):
+    job = get_job_details(job_id)
+    if not job:
+        print(f"Failed to fetch job requirements for job_id={job_id}: job not found in DB")
+        return ""
+    requirements = job.get("skills", [])
+    description = job.get("description", "")
+    print(f"Parsed requirements from DB: {requirements}, description: {description}")
+    return f"{description}\nSkills: {', '.join(requirements)}"
+
+def generate_ai_cv(cv_text, job_role, requirements):
+    prompt = (
+        f"Original CV:\n{cv_text}\n\n"
+        f"Job Role: {job_role}\n"
+        f"Company Requirements: {requirements}\n\n"
+        "Your task:\n"
+        "- Rewrite the CV to highlight and improve description of backend-relevant skills and experiences.\n"
+        "- DO NOT invent any new skills — only improve existing ones.\n"
+        "- Format the output clearly using sections: [Contact Info, Summary, Skills, Experience, Education, Certifications].\n"
+        "- Use proper headings (like '## Summary') and bullet points where appropriate.\n"
+        "- Keep the tone professional and suitable for a job application."
+    )
+
+    genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+    model = genai.GenerativeModel("gemini-1.5-flash")
+    response = model.generate_content(prompt)
+    print("Heloo-----------------------------------")
+    # print(response.text)
+    return response.text
+
+
+# def create_pdf(cv_text, filename="modified_cv.pdf"):
+#     pdf = FPDF()
+#     pdf.add_page()
+#     pdf.set_auto_page_break(auto=True, margin=15)
+#     pdf.set_font("Arial", size=12)
+#     for line in cv_text.split('\n'):
+#         pdf.multi_cell(0, 10, line)
+#     pdf.output(filename)
+#     with open(filename, "rb") as f:
+#         return f.read()
+
+def sanitize_text(text):
+    # Replace non-ASCII characters with a placeholder or remove them
+    return text.encode("latin-1", "replace").decode("latin-1")
+
+def create_pdf(cv_text, filename="modified_cv.pdf"):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.set_font("Arial", size=12)
+
+    lines = cv_text.splitlines()
+    for line in lines:
+        line = sanitize_text(line.strip())
+        if not line:
+            pdf.ln(5)
+        elif line.startswith("##"):
+            pdf.set_font("Arial", "B", 12)
+            pdf.cell(0, 10, line.replace("##", "").strip(), ln=True)
+            pdf.set_font("Arial", size=12)
+        elif line.startswith("- "):
+            bullet = u"\u2022 " + line[2:].strip()
+            bullet = sanitize_text(bullet)
+            pdf.cell(10)
+            pdf.multi_cell(0, 8, bullet)
+        else:
+            pdf.multi_cell(0, 8, line)
+
+    pdf.output(filename)
+    with open(filename, "rb") as f:
+        return f.read()
+
+@app.post("/api/v1/modify-cv")
+async def modify_cv(req: ModifyCVRequest):
+    # print("Received request body:", req.dict())  # Print the parsed request
+    file_path = req.cv_url.replace("http://localhost:4004", "/app")
+    # print("Resolved file path:", file_path)
+    cv_text = extract_text_from_pdf(file_path)
+    # print("Extracted CV text:", cv_text[:200])  # Print first 200 chars for brevity
+    requirements = get_job_requirements(req.job_id)
+    # print("Job requirements:", requirements)
+    modified_cv_text = generate_ai_cv(cv_text, req.job_role, requirements)
+    print("Modified CV text:", modified_cv_text[:200])
+    pdf_bytes = create_pdf(modified_cv_text)
+    # print("PDF bytes length:", len(pdf_bytes))
+    return {"modified_cv": modified_cv_text, "pdf": pdf_bytes.hex()}
+
 
 def get_user_profile(user_id: int) -> Dict[str, Any]:
     """Fetch user profile from database"""
@@ -227,6 +371,18 @@ def enhanced_candidate_analysis(job_details: Dict, candidate: Dict) -> Dict:
             "experience_match": 50,
             "cultural_fit": 50
         }
+    
+
+def clean_ai_json_response(ai_response: str) -> str:
+    # Remove markdown code block markers and whitespace
+    ai_response = ai_response.strip()
+    if ai_response.startswith("```json"):
+        ai_response = ai_response[len("```json"):].strip()
+    if ai_response.startswith("```"):
+        ai_response = ai_response[len("```"):].strip()
+    if ai_response.endswith("```"):
+        ai_response = ai_response[:-3].strip()
+    return ai_response
 
 def enhanced_job_matching(user_profile: Dict, job: Dict) -> Dict:
     """Enhanced AI analysis for job-user matching"""
@@ -255,58 +411,36 @@ def enhanced_job_matching(user_profile: Dict, job: Dict) -> Dict:
         {{
             "match_score": 85,
             "match_quality": "excellent|good|fair|poor",
-            "match_explanation": "Detailed explanation of why this job is suitable...",
-            "career_growth_potential": "high|medium|low",
-            "skill_development_opportunities": ["skill1", "skill2"],
-            "pros": ["advantage1", "advantage2", "advantage3"],
-            "cons": ["concern1", "concern2"],
-            "recommendation_strength": "highly_recommend|recommend|consider|not_recommend",
-            "salary_expectation": "competitive|above_average|average|below_average"
+            "match_explanation": "Detailed explanation of why this job is suitable..."
         }}
         
-        Focus on career alignment, growth potential, and long-term benefits for the user.
+        Respond ONLY with valid JSON. Do not include markdown, code blocks, or any explanation.
         """
         
         ai_response = analyze_with_ai(prompt)
+        ai_response = clean_ai_json_response(ai_response)
         
         try:
             analysis = json.loads(ai_response)
             # Validate and set defaults
-            analysis['match_score'] = max(0, min(100, analysis.get('match_score', 60)))
-            analysis['match_quality'] = analysis.get('match_quality', 'fair')
-            analysis['match_explanation'] = analysis.get('match_explanation', 'Job matches your general profile')
-            analysis['career_growth_potential'] = analysis.get('career_growth_potential', 'medium')
-            analysis['skill_development_opportunities'] = analysis.get('skill_development_opportunities', ['General skills'])
-            analysis['pros'] = analysis.get('pros', ['Career opportunity'])
-            analysis['cons'] = analysis.get('cons', ['Standard considerations'])
-            analysis['recommendation_strength'] = analysis.get('recommendation_strength', 'consider')
-            analysis['salary_expectation'] = analysis.get('salary_expectation', 'average')
-            return analysis
+            return {
+                "match_score": max(0, min(100, analysis.get('match_score', 60))),
+                "match_quality": analysis.get('match_quality', 'fair'),
+                "match_explanation": analysis.get('match_explanation', 'Job matches your general profile')
+            }
         except json.JSONDecodeError:
             # Fallback analysis
             return {
                 "match_score": 65,
                 "match_quality": "fair",
-                "match_explanation": "Job evaluated by AI system - general match found",
-                "career_growth_potential": "medium",
-                "skill_development_opportunities": ["To be determined"],
-                "pros": ["Career opportunity", "Professional development"],
-                "cons": ["Requires further evaluation"],
-                "recommendation_strength": "consider",
-                "salary_expectation": "average"
+                "match_explanation": "Job evaluated by AI system - general match found"
             }
     except Exception as e:
         print(f"Enhanced job matching error: {e}")
         return {
             "match_score": 50,
-            "match_quality": "fair", 
-            "match_explanation": "Basic compatibility assessment",
-            "career_growth_potential": "medium",
-            "skill_development_opportunities": ["To be assessed"],
-            "pros": ["Professional opportunity"],
-            "cons": ["Manual review recommended"],
-            "recommendation_strength": "consider",
-            "salary_expectation": "average"
+            "match_quality": "fair",
+            "match_explanation": "Basic compatibility assessment"
         }
 
 @app.post("/api/ai/companies/{company_id}/jobs/{job_id}/shortlist")
@@ -447,8 +581,7 @@ async def recommend_jobs(user_id: int):
             
             # Recommend jobs with score >= 60 or recommendation is consider/recommend/highly_recommend
             should_recommend = (
-                analysis['match_score'] >= 60 or 
-                analysis['recommendation_strength'] in ['consider', 'recommend', 'highly_recommend']
+                analysis['match_score'] >= 60 
             )
             
             if should_recommend:
@@ -456,18 +589,13 @@ async def recommend_jobs(user_id: int):
                     "id": job['id'],
                     "title": job['title'],
                     "company": job['company_name'],
+                    "company_id": job['company_id'],
                     "industry": job.get('industry', 'Not specified'),
                     "location": job.get('location', 'Not specified'),
                     "description": job['description'][:300] + "..." if len(job['description']) > 300 else job['description'],
                     "match_score": analysis['match_score'],
                     "match_quality": analysis['match_quality'],
                     "match_explanation": analysis['match_explanation'],
-                    "career_growth_potential": analysis['career_growth_potential'],
-                    "skill_development_opportunities": analysis['skill_development_opportunities'],
-                    "pros": analysis['pros'],
-                    "cons": analysis['cons'],
-                    "recommendation_strength": analysis['recommendation_strength'],
-                    "salary_expectation": analysis['salary_expectation'],
                     "employment_type": job.get('employment_type', 'Not specified'),
                     "skills": job.get('skills', []),
                     "posted_at": str(job.get('posted_at', '')),
@@ -483,7 +611,17 @@ async def recommend_jobs(user_id: int):
         top_recommendations = recommended_jobs[:15]
         
         # Calculate recommendation quality metrics
+        
         if top_recommendations:
+            # Print the fields that will be used in the frontend for Modify CV
+            for job in top_recommendations:
+                print(
+                    f"Job for Modify CV: id={job.get('id')}, title={job.get('title')}, company_id={job.get('company_id', 'N/A')}, "
+                    f"company={job.get('company')}, match_score={job.get('match_score')}, match_quality={job.get('match_quality')}"
+                )
+
+            # print(f"🎉 Recommendations complete: {result['message']}")
+
             avg_score = sum(job['match_score'] for job in top_recommendations) / len(top_recommendations)
             high_quality_count = len([job for job in top_recommendations if job['match_score'] >= 80])
             recommendation_quality = "excellent" if high_quality_count >= 5 else "good" if high_quality_count >= 2 else "fair"

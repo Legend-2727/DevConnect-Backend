@@ -708,3 +708,18 @@ export const bulkUpdateApplicationStatus = async (req, res) => {
     res.status(500).json({ error: 'Failed to update application statuses' });
   }
 };
+
+
+export const getJobDetails = async (req, res) => {
+  try {
+    const { jobId } = req.params;
+    const result = await db.query(
+      'SELECT * FROM devconnect.jobs WHERE id = $1',
+      [jobId]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: 'Job not found' });
+    res.json({ job: result.rows[0] });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch job details' });
+  }
+};
