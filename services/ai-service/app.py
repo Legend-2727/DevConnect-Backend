@@ -5,6 +5,19 @@ from pydantic import BaseModel
 import subprocess, json
 from typing import List, Dict, Any
 import traceback
+import os
+from dotenv import load_dotenv
+
+# CV Modification imports
+try:
+    import google.generativeai as genai
+    from fpdf import FPDF
+    CV_MODIFICATION_AVAILABLE = True
+except ImportError as e:
+    print(f"Warning: CV modification dependencies not available: {e}")
+    CV_MODIFICATION_AVAILABLE = False
+    genai = None
+    FPDF = None
 
 
 try:
@@ -32,9 +45,27 @@ except ImportError as e:
     class FunctionMessage:
         def __init__(self, content): self.content = content 
 
+# Load environment variables
+load_dotenv()
+
+# Configure Google AI for CV modification
+if CV_MODIFICATION_AVAILABLE and genai:
+    try:
+        genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+        print("✅ Google AI configured for CV modification")
+    except Exception as e:
+        print(f"⚠️ Warning: Could not configure Google AI: {e}")
+        CV_MODIFICATION_AVAILABLE = False
+
+# CV Modification Models
+class ModifyCVRequest(BaseModel):
+    cv_url: str
+    job_role: str
+    company_id: int
+    job_id: int 
+
 
 import psycopg2
-import os
 try:
     from apscheduler.schedulers.background import BackgroundScheduler  
     from apscheduler.triggers.interval import IntervalTrigger  
@@ -362,6 +393,128 @@ def init_scheduler():
 
 init_scheduler()
 
+# CV Modification Helper Functions
+def extract_text_from_pdf(file_path):
+    """Extract text from PDF file"""
+    if not CV_MODIFICATION_AVAILABLE:
+        return "CV modification not available - missing dependencies"
+    
+    try:
+        from PyPDF2 import PdfReader
+        reader = PdfReader(file_path)
+        text = ""
+        for page in reader.pages:
+            text += page.extract_text() or ""
+        return text
+    except Exception as e:
+        print(f"Error extracting text from PDF: {e}")
+        return f"Error reading PDF: {str(e)}"
+
+def get_job_details_for_cv(job_id: int) -> Dict[str, Any]:
+    """Fetch job details from the database by job_id for CV modification"""
+    try:
+        connection = psycopg2.connect(
+            host=os.getenv("DB_HOST", "db"),
+            port=os.getenv("DB_PORT", "5432"),
+            database=os.getenv("DB_NAME", "main"),
+            user=os.getenv("DB_USER", "root"),
+            password=os.getenv("DB_PASS", "password")
+        )
+        cursor = connection.cursor()
+        cursor.execute("""
+            SELECT j.*, c.name as company_name, c.industry
+            FROM devconnect.jobs j
+            JOIN devconnect.companies c ON j.company_id = c.id
+            WHERE j.id = %s
+        """, (job_id,))
+        job = cursor.fetchone()
+        if job:
+            columns = [desc[0] for desc in cursor.description]
+            return dict(zip(columns, job))
+        return {}
+    except Exception as e:
+        print(f"Error fetching job details for job_id={job_id}: {e}")
+        return {}
+    finally:
+        if 'connection' in locals():
+            connection.close()
+
+def get_job_requirements_for_cv(job_id):
+    """Get job requirements for CV modification"""
+    job = get_job_details_for_cv(job_id)
+    if not job:
+        print(f"Failed to fetch job requirements for job_id={job_id}: job not found in DB")
+        return ""
+    requirements = job.get("skills", [])
+    description = job.get("description", "")
+    print(f"Parsed requirements from DB: {requirements}, description: {description}")
+    return f"{description}\nSkills: {', '.join(requirements) if requirements else 'General skills'}"
+
+def generate_ai_cv(cv_text, job_role, requirements):
+    """Generate improved CV using AI"""
+    if not CV_MODIFICATION_AVAILABLE or not genai:
+        return f"CV modification not available. Original CV:\n{cv_text}"
+    
+    try:
+        prompt = (
+            f"Original CV:\n{cv_text}\n\n"
+            f"Job Role: {job_role}\n"
+            f"Company Requirements: {requirements}\n\n"
+            "Your task:\n"
+            "- Rewrite the CV to highlight and improve description of backend-relevant skills and experiences.\n"
+            "- DO NOT invent any new skills — only improve existing ones.\n"
+            "- Format the output clearly using sections: [Contact Info, Summary, Skills, Experience, Education, Certifications].\n"
+            "- Use proper headings (like '## Summary') and bullet points where appropriate.\n"
+            "- Keep the tone professional and suitable for a job application."
+        )
+
+        model = genai.GenerativeModel("gemini-1.5-flash")
+        response = model.generate_content(prompt)
+        print("AI CV generation completed")
+        return response.text
+    except Exception as e:
+        print(f"Error generating AI CV: {e}")
+        return f"Error in AI generation: {str(e)}\n\nOriginal CV:\n{cv_text}"
+
+def sanitize_text(text):
+    """Replace non-ASCII characters for PDF compatibility"""
+    return text.encode("latin-1", "replace").decode("latin-1")
+
+def create_pdf(cv_text, filename="modified_cv.pdf"):
+    """Create PDF from CV text"""
+    if not CV_MODIFICATION_AVAILABLE or not FPDF:
+        return b"PDF creation not available - missing dependencies"
+    
+    try:
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_auto_page_break(auto=True, margin=15)
+        pdf.set_font("Arial", size=12)
+
+        lines = cv_text.splitlines()
+        for line in lines:
+            line = sanitize_text(line.strip())
+            if not line:
+                pdf.ln(5)
+            elif line.startswith("##"):
+                pdf.set_font("Arial", "B", 12)
+                pdf.cell(0, 10, line.replace("##", "").strip(), ln=True)
+                pdf.set_font("Arial", size=12)
+            elif line.startswith("- "):
+                bullet = u"\u2022 " + line[2:].strip()
+                bullet = sanitize_text(bullet)
+                pdf.cell(10)
+                pdf.multi_cell(0, 8, bullet)
+            else:
+                pdf.multi_cell(0, 8, line)
+
+        pdf.output(filename)
+        with open(filename, "rb") as f:
+            return f.read()
+    except Exception as e:
+        print(f"Error creating PDF: {e}")
+        return f"Error creating PDF: {str(e)}".encode()
+
 
 app = FastAPI()
 
@@ -495,6 +648,49 @@ async def improve_cv(data: ImproveRequest):
 
     except json.JSONDecodeError:
         raise HTTPException(500, "Invalid JSON from graph_runner_improve.py")
+
+@app.post("/api/v1/modify-cv")
+async def modify_cv(req: ModifyCVRequest):
+    """
+    Modify CV based on job requirements using AI
+    """
+    try:
+        if not CV_MODIFICATION_AVAILABLE:
+            raise HTTPException(500, "CV modification not available - missing dependencies")
+        
+        # Convert CV URL to file path
+        file_path = req.cv_url.replace("http://localhost:4004", "/app")
+        print(f"Processing CV modification request: {req.dict()}")
+        print(f"Resolved file path: {file_path}")
+        
+        # Extract text from PDF
+        cv_text = extract_text_from_pdf(file_path)
+        print(f"Extracted CV text: {cv_text[:200]}...")  # Print first 200 chars for brevity
+        
+        # Get job requirements
+        requirements = get_job_requirements_for_cv(req.job_id)
+        print(f"Job requirements: {requirements}")
+        
+        # Generate modified CV using AI
+        modified_cv_text = generate_ai_cv(cv_text, req.job_role, requirements)
+        print(f"Modified CV text: {modified_cv_text[:200]}...")
+        
+        # Create PDF
+        pdf_bytes = create_pdf(modified_cv_text)
+        print(f"PDF bytes length: {len(pdf_bytes)}")
+        
+        return {
+            "modified_cv": modified_cv_text, 
+            "pdf": pdf_bytes.hex(),
+            "status": "success",
+            "message": "CV modified successfully"
+        }
+        
+    except Exception as e:
+        print(f"Error in CV modification: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(500, f"Error modifying CV: {str(e)}")
 
 @app.post("/recommend")
 async def recommend_jobs(data: RecommendRequest):
@@ -710,11 +906,34 @@ async def monitor_all_pending_interviews():
 
 @app.get("/")
 async def root():
-    return {"message": "DevConnect AI Service is running"}
+    features = [
+        "LangGraph AI Agents",
+        "Job Recommendation System", 
+        "Candidate Shortlisting",
+        "Interview Scheduling"
+    ]
+    
+    if CV_MODIFICATION_AVAILABLE:
+        features.append("AI-Powered CV Modification")
+    
+    return {
+        "message": "DevConnect AI Service", 
+        "status": "running", 
+        "version": "2.3.2",
+        "features": features,
+        "cv_modification": "available" if CV_MODIFICATION_AVAILABLE else "disabled (missing dependencies)"
+    }
 
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy", "service": "ai-service", "version": "2.3.1"}
+    return {
+        "status": "healthy", 
+        "service": "ai-service", 
+        "version": "2.3.2",
+        "langraph_available": LANGRAPH_AVAILABLE,
+        "cv_modification_available": CV_MODIFICATION_AVAILABLE,
+        "scheduler_available": SCHEDULER_AVAILABLE
+    }
 
 if __name__ == "__main__":
     import uvicorn

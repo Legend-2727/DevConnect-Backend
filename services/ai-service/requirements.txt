@@ -4,16 +4,18 @@ uvicorn
 psycopg2-binary
 python-dotenv
 
+# CV Modification dependencies
+google-generativeai
+pypdf2
+fpdf
+
 # Optional AI dependencies (may fail to install)
 # langgraph
 # langchain
 # langchain-openai
 # langchain_google_genai
-# google-generativeai
 # tiktoken
 
 # Optional dependencies
-pypdf2
 tqdm
-fpdf
 # apscheduler==3.10.4

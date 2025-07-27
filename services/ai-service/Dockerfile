@@ -9,9 +9,10 @@ RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
 COPY requirements.txt requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy app and env file
+# Copy all necessary files
 COPY app.py app.py
 COPY .env .env
+COPY agent_graph/ agent_graph/
 
 EXPOSE 8000
 
