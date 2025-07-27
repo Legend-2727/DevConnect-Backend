@@ -96,7 +96,6 @@ services:
     ports:
       - "4002:8000"
     volumes:
-      - ./services/ai-service:/app
       - ./uploads:/app/uploads  # Persistent volume for uploaded files
       - ./services/ai-service/sample-cvs:/app/sample-cvs  # CV samples
     command: python app.py

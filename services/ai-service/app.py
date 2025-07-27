@@ -7,22 +7,49 @@ from typing import List, Dict, Any
 import traceback
 
 
-from agent_graph.shortlist_graph import shortlist_graph
-from agent_graph.job_graph import cv_graph
-from langchain_core.messages import (
-    HumanMessage, AIMessage, SystemMessage, ToolMessage, FunctionMessage
-)
-
-from agent_graph.interview_scheduling_graph import interview_scheduling_graph 
+try:
+    from agent_graph.shortlist_graph import shortlist_graph
+    from agent_graph.job_graph import cv_graph
+    from langchain_core.messages import (
+        HumanMessage, AIMessage, SystemMessage, ToolMessage, FunctionMessage
+    )
+    from agent_graph.interview_scheduling_graph import interview_scheduling_graph
+    LANGRAPH_AVAILABLE = True
+except ImportError as e:
+    print(f"Warning: LangGraph components not available: {e}")
+    print("Running in basic mode without AI agent functionality")
+    LANGRAPH_AVAILABLE = False
+    
+    # Mock classes for basic functionality
+    class HumanMessage:
+        def __init__(self, content): self.content = content
+    class AIMessage:
+        def __init__(self, content): self.content = content
+    class SystemMessage:
+        def __init__(self, content): self.content = content
+    class ToolMessage:
+        def __init__(self, content): self.content = content
+    class FunctionMessage:
+        def __init__(self, content): self.content = content 
 
 
 import psycopg2
 import os
-from apscheduler.schedulers.background import BackgroundScheduler  
-from apscheduler.triggers.interval import IntervalTrigger  
+try:
+    from apscheduler.schedulers.background import BackgroundScheduler  
+    from apscheduler.triggers.interval import IntervalTrigger  
+    SCHEDULER_AVAILABLE = True
+except ImportError:
+    print("Warning: APScheduler not available - background monitoring disabled")
+    SCHEDULER_AVAILABLE = False
+    BackgroundScheduler = None
+    IntervalTrigger = None  
 import atexit
 
-scheduler = BackgroundScheduler()
+if SCHEDULER_AVAILABLE:
+    scheduler = BackgroundScheduler()
+else:
+    scheduler = None
 def get_jobs_awaiting_interview_scheduling() -> List[int]:
     """Get jobs that have sent shortlist emails but haven't scheduled interviews yet"""
     try:
@@ -305,8 +332,12 @@ def background_interview_monitoring():
 
 def init_scheduler():
     """Initialize scheduler when module loads"""
+    if not SCHEDULER_AVAILABLE:
+        print("⚠️  Scheduler not available - background monitoring disabled")
+        return
+        
     try:
-        print(" Initializing scheduler at module level...")
+        print("🔄 Initializing scheduler at module level...")
         
         scheduler.add_job(
             func=background_interview_monitoring,
@@ -317,14 +348,14 @@ def init_scheduler():
         )
         
         scheduler.start()
-        print(" Scheduler started at module level - will check every 60 minutes (API quota conservation)")
+        print("✅ Scheduler started at module level - will check every 60 minutes (API quota conservation)")
         
-        
-        print(" Running initial background check...")
+        # Print initial background check
+        print("🔄 Running initial background check...")
         # background_interview_monitoring()  # Commented out to conserve API quota
         
     except Exception as e:
-        print(f" Module scheduler error: {e}")
+        print(f"❌ Module scheduler error: {e}")
         import traceback
         traceback.print_exc()
 
@@ -348,17 +379,23 @@ app.add_middleware(
 @app.on_event("shutdown")
 async def shutdown_event():
     """Stop the scheduler when FastAPI shuts down"""
+    if not SCHEDULER_AVAILABLE or scheduler is None:
+        print("ℹ️  No scheduler to shutdown")
+        return
+        
     try:
         if scheduler.running:
-            print(" Stopping automated interview monitoring scheduler...")
+            print("🔄 Stopping automated interview monitoring scheduler...")
             scheduler.shutdown(wait=False)
         else:
-            print("ℹ  Scheduler was not running")
+            print("ℹ️  Scheduler was not running")
     except Exception as e:
         print(f"Error shutting down scheduler: {e}")
 
 
 def cleanup_scheduler():
+    if not SCHEDULER_AVAILABLE or scheduler is None:
+        return
     try:
         if scheduler.running:
             scheduler.shutdown(wait=False)
@@ -463,14 +500,23 @@ async def improve_cv(data: ImproveRequest):
 async def recommend_jobs(data: RecommendRequest):
     try:
         print("Received recommend request:", data.dict())
-        result = cv_graph.invoke({
-            "messages": [
-                HumanMessage(content=f"Process CV at {data.cv_path} and recommend jobs for user {data.user_id}")
-            ],
-            "cv_path": data.cv_path
-        })
-        print("Recommend graph result:", result)
-        return result  # or serialize(result) if needed
+        
+        if LANGRAPH_AVAILABLE:
+            result = cv_graph.invoke({
+                "messages": [
+                    HumanMessage(content=f"Process CV at {data.cv_path} and recommend jobs for user {data.user_id}")
+                ],
+                "cv_path": data.cv_path
+            })
+            print("Recommend graph result:", result)
+            return result  # or serialize(result) if needed
+        else:
+            return {
+                "user_id": data.user_id,
+                "cv_path": data.cv_path,
+                "recommendations": [],
+                "message": "Running in basic mode - AI job recommendations not available"
+            }
 
     except Exception as e:
         print("Exception in /recommend:", e)
@@ -523,27 +569,40 @@ async def shortlist(req: ShortlistReq):
                 "shortlist": [],
                 "email_sent": False
             }
-        result = shortlist_graph.invoke({
-            "messages": [
-                HumanMessage(content="Extract CVs, shortlist candidates, and send email notification.")
-            ],
-            "job_desc": job_data["job_desc"],
-            "job_skills": job_data["job_skills"],
-            "job_id": req.job_id,
-            "job_title": job_data["job_title"],
-            "applicants": job_data["applicants"]
-        })
         
-        print("Shortlist graph result:", result)
-        
-        return {
-            "job_id": req.job_id,
-            "job_title": job_data["job_title"],
-            "total_applicants": len(job_data["applicants"]),
-            "shortlist": serialize(result.get("shortlist", [])),
-            "shortlisted_count": len(result.get("shortlist", [])),
-            "email_sent": result.get("email_sent", False)
-        }
+        if LANGRAPH_AVAILABLE:
+            result = shortlist_graph.invoke({
+                "messages": [
+                    HumanMessage(content="Extract CVs, shortlist candidates, and send email notification.")
+                ],
+                "job_desc": job_data["job_desc"],
+                "job_skills": job_data["job_skills"],
+                "job_id": req.job_id,
+                "job_title": job_data["job_title"],
+                "applicants": job_data["applicants"]
+            })
+            
+            print("Shortlist graph result:", result)
+            
+            return {
+                "job_id": req.job_id,
+                "job_title": job_data["job_title"],
+                "total_applicants": len(job_data["applicants"]),
+                "shortlist": serialize(result.get("shortlist", [])),
+                "shortlisted_count": len(result.get("shortlist", [])),
+                "email_sent": result.get("email_sent", False)
+            }
+        else:
+            # Basic mode without AI - return all applicants as shortlisted
+            return {
+                "job_id": req.job_id,
+                "job_title": job_data["job_title"],
+                "total_applicants": len(job_data["applicants"]),
+                "shortlist": job_data["applicants"],
+                "shortlisted_count": len(job_data["applicants"]),
+                "email_sent": False,
+                "message": "Running in basic mode - AI shortlisting not available"
+            }
     
     except Exception as e:
         print("Exception in /shortlist:", e)
@@ -655,7 +714,11 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy", "service": "ai-service"}
+    return {"status": "healthy", "service": "ai-service", "version": "2.3.1"}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
 
 
 
