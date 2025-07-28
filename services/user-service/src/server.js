@@ -17,10 +17,15 @@ const PORT = process.env.PORT || 4004;
 app.use(cors({
   origin: [
     'http://localhost',
+    `http://${process.env.CORSFIX}`,
     'http://localhost:3000',
+    `http://${process.env.CORSFIX}:3000`,
     'http://localhost:80',
+    `http://${process.env.CORSFIX}:80`,
     'http://localhost:8000',
+    `http://${process.env.CORSFIX}:8000`,
     'http://localhost:4002',
+    `http://${process.env.CORSFIX}:4002`,
   ],
   credentials: true
 }));

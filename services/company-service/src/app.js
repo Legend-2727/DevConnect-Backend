@@ -29,8 +29,11 @@ const app = express();
 app.use(cors({
   origin: [
     'http://localhost',
+    `http://${process.env.CORSFIX}`,
     'http://localhost:3000',
+    `http://${process.env.CORSFIX}:3000`,
     'http://localhost:80',
+    `http://${process.env.CORSFIX}:80`,
     process.env.FRONTEND || 'http://localhost'
   ],
   credentials: true

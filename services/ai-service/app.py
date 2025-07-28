@@ -520,7 +520,12 @@ app = FastAPI()
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:4004"],  # frontend and file service origins
+    allow_origins=[
+        "http://localhost:3000", 
+        f"http://{os.getenv('CORSFIX')}:3000",
+        "http://localhost:4004",
+        f"http://{os.getenv('CORSFIX')}:4004"
+    ],  # frontend and file service origins
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
