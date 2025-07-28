@@ -3,6 +3,32 @@ import jwt from 'jsonwebtoken';
 
 const JWT_SECRET = process.env.JWT_SECRET || "devconnectsecret";
 
+export const getCompanyProfile = async (req, res) => {
+  try {
+    console.log('getCompanyProfile called');
+    console.log('Params:', req.params);
+    const { companyId } = req.params;
+
+    // Fetch company profile from the database
+    const companyResult = await db.query(
+      'SELECT id, name, industry, website, logo FROM devconnect.companies WHERE id = $1',
+      [companyId]
+    );
+
+    if (companyResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Company not found' });
+    }
+
+    res.status(200).json({
+      success: true,
+      company: companyResult.rows[0]
+    });
+  } catch (error) {
+    console.error('Get company profile error:', error);
+    res.status(500).json({ error: 'Failed to get company profile' });
+  }
+};
+
 export const getJobDescription = async (req, res) => {
   try {
     console.log('getJobDescription called');
@@ -20,9 +46,16 @@ export const getJobDescription = async (req, res) => {
       return res.status(404).json({ error: 'Job not found' });
     }
 
+    // Fetch company details
+    const companyResult = await db.query(
+      'SELECT id, name, industry, website, logo FROM devconnect.companies WHERE id = $1',
+      [jobResult.rows[0].company_id]
+    );
+
     res.status(200).json({
       success: true,
-      job: jobResult.rows[0]
+      job: jobResult.rows[0],
+      company: companyResult.rows[0]
     });
   } catch (error) {
     console.error('Get job description error:', error);
@@ -30,7 +63,7 @@ export const getJobDescription = async (req, res) => {
   }
 };
 
-// Submit a job application
+// Submit a job application (modified to handle customized CVs)
 export const applyForJob = async (req, res) => {
   try {
     console.log('applyForJob called');
@@ -63,6 +96,9 @@ export const applyForJob = async (req, res) => {
 
     const userProfileId = userResult.rows[0].id;
     const { jobId } = req.params;
+    
+    // Get modified CV data if available
+    const { useModifiedCv, modifiedCvContent } = req.body;
 
     // Check if job exists and is active
     const jobResult = await db.query(
@@ -90,10 +126,43 @@ export const applyForJob = async (req, res) => {
       VALUES ($1, $2, 'UNDER_REVIEW')
       RETURNING id, job_id, user_id, status, applied_at
     `, [jobId, userProfileId]);
+    
+    const applicationId = result.rows[0].id;
+    
+    // If using modified CV, store it
+    if (useModifiedCv && modifiedCvContent) {
+      // First get user's original CV URL
+      const userCvResult = await db.query(
+        'SELECT cv_url FROM devconnect.users WHERE id = $1',
+        [userProfileId]
+      );
+      
+      const originalCvUrl = userCvResult.rows[0]?.cv_url;
+      
+      if (originalCvUrl) {
+        // Store customized CV in the cv_customizations table
+        await db.query(`
+          INSERT INTO devconnect.cv_customizations 
+          (user_id, job_id, original_cv_url, customized_cv_url, customization_notes)
+          VALUES ($1, $2, $3, $4, $5)
+        `, [
+          userProfileId, 
+          jobId, 
+          originalCvUrl,
+          'custom_cv_' + applicationId + '.txt', // We could store the actual content in a file or in the database
+          'CV customized for application ' + applicationId
+        ]);
+        
+        // Store the CV content in a separate column or file
+        // This is simplified - in production you might want to store in S3 or similar
+        console.log('Storing customized CV content for application:', applicationId);
+      }
+    }
 
     res.status(201).json({
       success: true,
-      application: result.rows[0]
+      application: result.rows[0],
+      cvCustomized: useModifiedCv || false
     });
   } catch (error) {
     console.error('Apply for job error:', error);
