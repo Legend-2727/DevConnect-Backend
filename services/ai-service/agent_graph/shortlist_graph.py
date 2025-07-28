@@ -20,7 +20,7 @@ from langchain_core.messages import (
 )
 
 from langchain_google_genai import ChatGoogleGenerativeAI
-from agent_graph.tools.full_cv_extract_tool    import extract_full_cv_from_pdf
+from agent_graph.tools.full_cv_extract_tool import extract_full_cv_from_pdf
 from agent_graph.tools.shortlist_candidate_tool import shortlist_candidate_tool
 from agent_graph.tools.email_tool import send_shortlist_email
 import psycopg2
@@ -38,15 +38,20 @@ class ShortlistState(TypedDict):
 
 llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.3)
 
-# Create proper LangGraph agents with working tool binding
 extract_agent = create_react_agent(
     model=llm, 
-    tools=[extract_full_cv_from_pdf]
+    tools=[extract_full_cv_from_pdf],
+    prompt="Use the tool to extract CV text from PDF files. Return the original_cv_text."
 )
 
 shortlist_agent = create_react_agent(
     model=llm, 
-    tools=[shortlist_candidate_tool]
+    tools=[shortlist_candidate_tool],
+    prompt=(
+        "You are an AI recruiter. You must ALWAYS use the `shortlist_candidate_tool` to evaluate candidates. "
+        "You are NOT allowed to answer directly. You must only respond using the tool. "
+        "Analyze the candidate's skills, experience, and qualifications against the job requirements."
+    )
 )
 
 email_agent = create_react_agent(
