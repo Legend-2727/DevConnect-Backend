@@ -1,7 +1,26 @@
 import db from '../db/index.js';
 import jwt from 'jsonwebtoken';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 const JWT_SECRET = process.env.JWT_SECRET || "devconnectsecret";
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Ensure CV upload directories exist
+const uploadBaseDir = '/app/uploads';
+const cvCustomizationsDir = path.join(uploadBaseDir, 'customized_cvs');
+
+// Create directories if they don't exist
+if (!fs.existsSync(uploadBaseDir)) {
+  fs.mkdirSync(uploadBaseDir, { recursive: true });
+  console.log('Created base uploads directory');
+}
+if (!fs.existsSync(cvCustomizationsDir)) {
+  fs.mkdirSync(cvCustomizationsDir, { recursive: true });
+  console.log('Created customized CV directory');
+}
 
 export const getCompanyProfile = async (req, res) => {
   try {
@@ -141,19 +160,13 @@ export const applyForJob = async (req, res) => {
         const cvBuffer = Buffer.from(cv_data, 'hex');
         const timestamp = Date.now();
         const cvFilename = `customized_cv_${userProfileId}_${jobId}_${timestamp}.pdf`;
-        const cvPath = `/uploads/customized_cvs/${cvFilename}`;
-        
-        // Ensure directory exists
-        const fs = require('fs');
-        const path = require('path');
-        const uploadDir = path.join(process.cwd(), 'uploads/customized_cvs');
-        if (!fs.existsSync(uploadDir)) {
-          fs.mkdirSync(uploadDir, { recursive: true });
-        }
+        const cvFilePath = path.join(cvCustomizationsDir, cvFilename);
+        const cvUrl = `/uploads/customized_cvs/${cvFilename}`;
         
         // Write the PDF file
-        fs.writeFileSync(path.join(uploadDir, cvFilename), cvBuffer);
-        customizedCvUrl = `/uploads/customized_cvs/${cvFilename}`;
+        fs.writeFileSync(cvFilePath, cvBuffer);
+        console.log(`Saved customized CV to: ${cvFilePath}`);
+        customizedCvUrl = cvUrl;
         
         // Store the customization record
         await db.query(`
