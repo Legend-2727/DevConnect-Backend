@@ -604,6 +604,7 @@ export const getJobApplications = async (req, res) => {
     }
 
     // Get all applications for this job with user details
+    // Add LEFT JOIN to cv_customizations to check for customized CVs
     const result = await db.query(`
       SELECT 
         a.id,
@@ -615,20 +616,40 @@ export const getJobApplications = async (req, res) => {
         u.name as user_name,
         u.education_level,
         u.experience_level,
-        u.cv_url,
+        COALESCE(cvc.customized_cv_url, u.cv_url) as cv_url,
+        cvc.customized_cv_url IS NOT NULL as is_customized_cv,
         acc.email as user_email
       FROM devconnect.applications a
       JOIN devconnect.users u ON a.user_id = u.id
       JOIN devconnect.accounts acc ON u.account_id = acc.id
+      LEFT JOIN devconnect.cv_customizations cvc 
+        ON cvc.user_id = a.user_id AND cvc.job_id = a.job_id
       WHERE a.job_id = $1
       ORDER BY a.applied_at DESC
     `, [jobId]);
 
+    // Process CV URLs to make them fully accessible
+    const applications = result.rows.map(app => {
+      let cvUrl = app.cv_url;
+      
+      // Format CV URLs to be accessible from frontend
+      if (cvUrl && !cvUrl.startsWith('http')) {
+        // Determine the proper service URL based on whether it's a customized CV or not
+        const baseUrl = app.is_customized_cv ? 'http://localhost:4006' : 'http://localhost:4004';
+        cvUrl = `${baseUrl}${cvUrl}`;
+      }
+      
+      return {
+        ...app,
+        cv_url: cvUrl
+      };
+    });
+
     res.json({
       success: true,
       job: jobResult.rows[0],
-      applications: result.rows,
-      count: result.rows.length
+      applications: applications,
+      count: applications.length
     });
   } catch (error) {
     console.error('Get job applications error:', error);
