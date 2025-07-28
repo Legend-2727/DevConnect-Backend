@@ -65,11 +65,27 @@ def _maybe_json(raw):
     return raw
 
 def extract_summary_node(state: CVRecommendationState):
+    # First directly extract the CV text using the tool function
+    cv_result = extract_full_cv_from_pdf(state['cv_path'])
+    
+    if "error" in cv_result:
+        print(f"ERROR: Failed to extract CV: {cv_result['error']}")
+        return {
+            **state,
+            "summary_text": f"Error extracting CV: {cv_result['error']}",
+            "messages": state.get("messages", [])
+        }
+    
+    cv_text = cv_result["original_cv_text"]
+    print(f"DEBUG: Successfully extracted CV text ({len(cv_text)} chars)")
+    
+    # Now have the agent create a summary from the extracted CV text
     res = summary_agent.invoke({
         "messages": [
             HumanMessage(content=(
-                f"Extract the CV from {state['cv_path']} using the tool, "
-                "then analyze it and provide a comprehensive summary of the candidate's "
+                "The CV has already been extracted. Here is the full text:\n\n"
+                f"{cv_text}\n\n"
+                "Please analyze it and provide a comprehensive summary of the candidate's "
                 "key skills, experience, and qualifications."
             ))
         ]
@@ -79,52 +95,26 @@ def extract_summary_node(state: CVRecommendationState):
     for i, m in enumerate(res["messages"]):
         print(f"{i}. {type(m).__name__}: {getattr(m, 'content', '')[:100]}...")
     
-    # Look for the agent's summary in the final AI message (after tool use)
+    # Look for the summary in the last AI message
     summary_text = None
-    print("\nDEBUG: Searching for AI summary...")
     
-    for i, m in enumerate(reversed(res["messages"])):
-        print(f"Checking message {len(res['messages'])-1-i}: {type(m).__name__}")
-        
-        if isinstance(m, AIMessage):
-            print(f"  - Has content: {bool(m.content)}")
-            print(f"  - Has tool_calls: {bool(m.tool_calls)}")
-            print(f"  - Content preview: {m.content[:100] if m.content else 'None'}...")
-            
-            if m.content and not m.tool_calls:
-                print(f"  ✅ FOUND SUMMARY in AIMessage!")
-                summary_text = m.content.strip()
-                break
-            else:
-                print(f"  ❌ Skipping - has tool_calls or no content")
-        else:
-            print(f"  - Not an AIMessage, skipping")
+    for m in reversed(res["messages"]):
+        if isinstance(m, AIMessage) and m.content:
+            summary_text = m.content.strip()
+            break
     
+    # Fallback to the original CV text if no summary was created
     if not summary_text:
-        print("\nDEBUG: No AI summary found, trying fallback...")
-        # Fallback: extract just the CV text if no summary was created
-        try:
-            tool_payload = _maybe_json(_latest_tool_payload(res["messages"]))
-            print(f"DEBUG: Tool payload type: {type(tool_payload)}")
-            print(f"DEBUG: Tool payload keys: {tool_payload.keys() if isinstance(tool_payload, dict) else 'Not a dict'}")
-            
-            if isinstance(tool_payload, dict) and "original_cv_text" in tool_payload:
-                cv_text = tool_payload["original_cv_text"]
-                summary_text = f"CV extracted: {cv_text[:300]}..."
-                print("DEBUG: ✅ Using fallback CV text")
-            else:
-                print("DEBUG: ❌ No original_cv_text found in tool payload")
-        except Exception as e:
-            print(f"DEBUG: ❌ Fallback failed: {e}")
-            summary_text = "No summary available"
+        summary_text = f"CV extracted: {cv_text[:300]}..."
+        print("DEBUG: No summary generated, using fallback")
     
-    print(f"\nDEBUG: Final summary_text length: {len(summary_text) if summary_text else 0}")
-    print(f"DEBUG: Final summary_text preview: {summary_text[:200] if summary_text else 'None'}...")
+    print(f"DEBUG: Final summary_text length: {len(summary_text)}")
     
     return {
         **state,
+        "cv_text": cv_text,  # Store the raw CV text in the state
         "summary_text": summary_text,
-        "messages": state.get("messages", [])  # Don't accumulate agent messages
+        "messages": state.get("messages", [])
     }
 
 def recommend_jobs_node(state: CVRecommendationState):
@@ -151,6 +141,15 @@ def recommend_jobs_node(state: CVRecommendationState):
         "recommended_jobs": recommended_jobs,
         "messages": state.get("messages", [])  # Don't accumulate agent messages
     }
+
+builder = StateGraph(CVRecommendationState)
+builder.add_node("extract_summary", extract_summary_node)
+builder.add_node("recommend_jobs", recommend_jobs_node)
+builder.set_entry_point("extract_summary")
+builder.add_edge("extract_summary", "recommend_jobs")
+builder.set_finish_point("recommend_jobs")
+cv_graph = builder.compile()
+    
 
 builder = StateGraph(CVRecommendationState)
 builder.add_node("extract_summary", extract_summary_node)

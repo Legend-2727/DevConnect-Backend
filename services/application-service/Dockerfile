@@ -14,5 +14,5 @@ RUN chown -R appuser:appuser /app
 # Switch to non-root user
 USER appuser
 
-EXPOSE 4003
+EXPOSE 4006
 CMD ["npm", "run", "dev"]

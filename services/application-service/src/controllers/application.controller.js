@@ -3,6 +3,33 @@ import jwt from 'jsonwebtoken';
 
 const JWT_SECRET = process.env.JWT_SECRET || "devconnectsecret";
 
+export const getJobDescription = async (req, res) => {
+  try {
+    console.log('getJobDescription called');
+    console.log('Params:', req.params);
+
+    const { jobId } = req.params;
+
+    // Fetch job description from the database
+    const jobResult = await db.query(
+      'SELECT * FROM devconnect.jobs WHERE id = $1',
+      [jobId]
+    );
+
+    if (jobResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Job not found' });
+    }
+
+    res.status(200).json({
+      success: true,
+      job: jobResult.rows[0]
+    });
+  } catch (error) {
+    console.error('Get job description error:', error);
+    res.status(500).json({ error: 'Failed to get job description' });
+  }
+};
+
 // Submit a job application
 export const applyForJob = async (req, res) => {
   try {

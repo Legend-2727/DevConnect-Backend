@@ -10,11 +10,11 @@ pypdf2
 fpdf
 
 # Optional AI dependencies (may fail to install)
-# langgraph
-# langchain
-# langchain-openai
-# langchain_google_genai
-# tiktoken
+langgraph
+langchain
+langchain-openai
+langchain_google_genai
+tiktoken
 
 # Optional dependencies
 tqdm
