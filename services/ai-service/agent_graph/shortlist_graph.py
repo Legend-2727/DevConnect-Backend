@@ -38,29 +38,15 @@ class ShortlistState(TypedDict):
 
 llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.3)
 
-# Use a simpler approach instead of create_react_agent to avoid bind_tools issues
-def create_simple_agent(model, tools, prompt):
-    """Simple agent function that doesn't rely on bind_tools"""
-    def agent_function(state):
-        # This is a simplified implementation
-        # For now, we'll use direct tool calls instead of the react pattern
-        return {"messages": [AIMessage(content="Agent processing...")]}
-    return agent_function
-
-extract_agent = create_simple_agent(
+# Create proper LangGraph agents with working tool binding
+extract_agent = create_react_agent(
     model=llm, 
-    tools=[extract_full_cv_from_pdf],
-    prompt="Use the tool to extract CV text from PDF files. Return the original_cv_text."
+    tools=[extract_full_cv_from_pdf]
 )
 
-shortlist_agent = create_simple_agent(
+shortlist_agent = create_react_agent(
     model=llm, 
-    tools=[shortlist_candidate_tool],
-    prompt=(
-        "You are an AI recruiter. You must ALWAYS use the `shortlist_candidate_tool` to evaluate candidates. "
-        "You are NOT allowed to answer directly. You must only respond using the tool. "
-        "Analyze the candidate's skills, experience, and qualifications against the job requirements."
-    )
+    tools=[shortlist_candidate_tool]
 )
 
 email_agent = create_react_agent(
