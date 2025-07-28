@@ -63,7 +63,7 @@ export const getJobDescription = async (req, res) => {
   }
 };
 
-// Submit a job application (removed customized CV handling)
+// Submit a job application with optional customized CV
 export const applyForJob = async (req, res) => {
   try {
     console.log('applyForJob called');
@@ -86,7 +86,7 @@ export const applyForJob = async (req, res) => {
 
     // Get user profile
     const userResult = await db.query(
-      'SELECT id FROM devconnect.users WHERE account_id = $1',
+      'SELECT id, cv_url FROM devconnect.users WHERE account_id = $1',
       [userId]
     );
 
@@ -95,7 +95,11 @@ export const applyForJob = async (req, res) => {
     }
 
     const userProfileId = userResult.rows[0].id;
+    const originalCvUrl = userResult.rows[0].cv_url;
     const { jobId } = req.params;
+    
+    // Get customized CV data if provided
+    const { customized_cv, cv_version, cv_data } = req.body;
 
     // Check if job exists and is active
     const jobResult = await db.query(
@@ -117,17 +121,61 @@ export const applyForJob = async (req, res) => {
       return res.status(409).json({ error: 'You have already applied for this job' });
     }
 
-    // Create application
-    const result = await db.query(`
-      INSERT INTO devconnect.applications (job_id, user_id, status)
-      VALUES ($1, $2, 'UNDER_REVIEW')
-      RETURNING id, job_id, user_id, status, applied_at
-    `, [jobId, userProfileId]);
+    // Start a transaction for creating the application and CV customization if needed
+    await db.query('BEGIN');
+    
+    try {
+      // Create application
+      const appResult = await db.query(`
+        INSERT INTO devconnect.applications (job_id, user_id, status)
+        VALUES ($1, $2, 'UNDER_REVIEW')
+        RETURNING id, job_id, user_id, status, applied_at
+      `, [jobId, userProfileId]);
+      
+      const applicationId = appResult.rows[0].id;
+      let customizedCvUrl = null;
 
-    res.status(201).json({
-      success: true,
-      application: result.rows[0]
-    });
+      // Handle customized CV if provided
+      if (customized_cv && cv_data) {
+        // Convert hex to binary and save the file
+        const cvBuffer = Buffer.from(cv_data, 'hex');
+        const timestamp = Date.now();
+        const cvFilename = `customized_cv_${userProfileId}_${jobId}_${timestamp}.pdf`;
+        const cvPath = `/uploads/customized_cvs/${cvFilename}`;
+        
+        // Ensure directory exists
+        const fs = require('fs');
+        const path = require('path');
+        const uploadDir = path.join(process.cwd(), 'uploads/customized_cvs');
+        if (!fs.existsSync(uploadDir)) {
+          fs.mkdirSync(uploadDir, { recursive: true });
+        }
+        
+        // Write the PDF file
+        fs.writeFileSync(path.join(uploadDir, cvFilename), cvBuffer);
+        customizedCvUrl = `/uploads/customized_cvs/${cvFilename}`;
+        
+        // Store the customization record
+        await db.query(`
+          INSERT INTO devconnect.cv_customizations (user_id, job_id, original_cv_url, customized_cv_url, customization_notes)
+          VALUES ($1, $2, $3, $4, $5)
+        `, [userProfileId, jobId, originalCvUrl, customizedCvUrl, `Version ${cv_version || 1} applied with application ${applicationId}`]);
+      }
+
+      await db.query('COMMIT');
+      
+      res.status(201).json({
+        success: true,
+        application: {
+          ...appResult.rows[0],
+          customized_cv: !!customized_cv,
+          customized_cv_url: customizedCvUrl
+        }
+      });
+    } catch (error) {
+      await db.query('ROLLBACK');
+      throw error;
+    }
   } catch (error) {
     console.error('Apply for job error:', error);
     res.status(500).json({ error: 'Failed to apply for job' });
