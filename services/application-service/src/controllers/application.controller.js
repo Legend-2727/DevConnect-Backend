@@ -63,7 +63,7 @@ export const getJobDescription = async (req, res) => {
   }
 };
 
-// Submit a job application (modified to handle customized CVs)
+// Submit a job application (removed customized CV handling)
 export const applyForJob = async (req, res) => {
   try {
     console.log('applyForJob called');
@@ -96,9 +96,6 @@ export const applyForJob = async (req, res) => {
 
     const userProfileId = userResult.rows[0].id;
     const { jobId } = req.params;
-    
-    // Get modified CV data if available
-    const { useModifiedCv, modifiedCvContent } = req.body;
 
     // Check if job exists and is active
     const jobResult = await db.query(
@@ -126,43 +123,10 @@ export const applyForJob = async (req, res) => {
       VALUES ($1, $2, 'UNDER_REVIEW')
       RETURNING id, job_id, user_id, status, applied_at
     `, [jobId, userProfileId]);
-    
-    const applicationId = result.rows[0].id;
-    
-    // If using modified CV, store it
-    if (useModifiedCv && modifiedCvContent) {
-      // First get user's original CV URL
-      const userCvResult = await db.query(
-        'SELECT cv_url FROM devconnect.users WHERE id = $1',
-        [userProfileId]
-      );
-      
-      const originalCvUrl = userCvResult.rows[0]?.cv_url;
-      
-      if (originalCvUrl) {
-        // Store customized CV in the cv_customizations table
-        await db.query(`
-          INSERT INTO devconnect.cv_customizations 
-          (user_id, job_id, original_cv_url, customized_cv_url, customization_notes)
-          VALUES ($1, $2, $3, $4, $5)
-        `, [
-          userProfileId, 
-          jobId, 
-          originalCvUrl,
-          'custom_cv_' + applicationId + '.txt', // We could store the actual content in a file or in the database
-          'CV customized for application ' + applicationId
-        ]);
-        
-        // Store the CV content in a separate column or file
-        // This is simplified - in production you might want to store in S3 or similar
-        console.log('Storing customized CV content for application:', applicationId);
-      }
-    }
 
     res.status(201).json({
       success: true,
-      application: result.rows[0],
-      cvCustomized: useModifiedCv || false
+      application: result.rows[0]
     });
   } catch (error) {
     console.error('Apply for job error:', error);
