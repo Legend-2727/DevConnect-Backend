@@ -392,11 +392,42 @@ def init_scheduler():
 
 init_scheduler()
 
+def extract_text_from_pdf_url(file_url: str) -> str:
+    """Extract text from PDF file at given URL"""
+    if not CV_MODIFICATION_AVAILABLE:
+        return "CV modification not available - missing dependencies"
+    
+    try:
+        import requests
+        from PyPDF2 import PdfReader
+        import io
+        
+        response = requests.get(file_url)
+        response.raise_for_status()  # Raise an error for bad responses (e.g., 404 Not Found)
+        
+        pdf_file = io.BytesIO(response.content)
+        reader = PdfReader(pdf_file)
+        
+        text = ""
+        for page in reader.pages:
+            text += page.extract_text() or ""
+        
+        return text.strip()
+    
+    except Exception as e:
+        print(f"Error extracting text from PDF URL: {e}")
+        return f"Error reading PDF: {str(e)}"
+
 # CV Modification Helper Functions
 def extract_text_from_pdf(file_path):
     """Extract text from PDF file"""
     if not CV_MODIFICATION_AVAILABLE:
         return "CV modification not available - missing dependencies"
+    
+    # http://98.70.42.26:4004/uploads/cvs/1753742844341-534324938.pdf
+
+    if (file_path.startswith("http://") or file_path.startswith("https://")):
+        return extract_text_from_pdf_url(file_path)
     
     try:
         from PyPDF2 import PdfReader
@@ -696,6 +727,74 @@ async def modify_cv(req: ModifyCVRequest):
         traceback.print_exc()
         raise HTTPException(500, f"Error modifying CV: {str(e)}")
 
+
+def recommendation_result_helper(result):
+    try:
+        # Extract the list of recommended jobs
+        recommended_jobs = result.get("recommended_jobs", [])
+        
+        if not recommended_jobs:
+            return result  # No modifications needed if no jobs
+        
+        # Extract job IDs for database query
+        job_ids = [job["id"] for job in recommended_jobs]
+        
+        # Connect to database
+        conn = psycopg2.connect(
+            host=os.getenv("DB_HOST", "db"),
+            database=os.getenv("DB_NAME", "main"),
+            user=os.getenv("DB_USER", "root"),
+            password=os.getenv("DB_PASS", "password"),
+            port=os.getenv("DB_PORT", "5432"),
+        )
+        
+        try:
+            with conn.cursor() as cur:
+                # Query to get company name, company ID, and job location for each job
+                placeholders = ", ".join(["%s"] * len(job_ids))
+                cur.execute(f"""
+                    SELECT j.id, j.company_id, c.name, j.location
+                    FROM devconnect.jobs j
+                    JOIN devconnect.companies c ON j.company_id = c.id
+                    WHERE j.id IN ({placeholders})
+                """, job_ids)
+                
+                # Create a dictionary to map job_id to company details
+                job_details = {}
+                for row in cur.fetchall():
+                    job_id, company_id, company_name, job_location = row
+                    job_details[job_id] = {
+                        "company_id": company_id,
+                        "company_name": company_name,
+                        "location": job_location or "Remote/Not specified"  # Default if location is NULL
+                    }
+                
+                # Add company details to each recommended job
+                for job in recommended_jobs:
+                    job_id = job["id"]
+                    if job_id in job_details:
+                        job.update({
+                            "company_id": job_details[job_id]["company_id"],
+                            "company_name": job_details[job_id]["company_name"],
+                            "location": job_details[job_id]["location"]
+                        })
+                    else:
+                        # If job details not found (unlikely since we're querying by job IDs in the result)
+                        job.update({
+                            "company_id": None,
+                            "company_name": "Unknown Company",
+                            "location": "Unknown Location"
+                        })
+        finally:
+            conn.close()
+        
+        return result
+    except Exception as e:
+        print(f"Error in recommendation_result_helper: {e}")
+        import traceback
+        traceback.print_exc()
+        return result  # Return original result if there was an error
+    
 @app.post("/recommend")
 async def recommend_jobs(data: RecommendRequest):
     try:
@@ -708,8 +807,9 @@ async def recommend_jobs(data: RecommendRequest):
                 ],
                 "cv_path": data.cv_path
             })
+            result = recommendation_result_helper(result)  # Use the helper function to add company details
             print("Recommend graph result:", result)
-            return result  # or serialize(result) if needed
+            return result
         else:
             return {
                 "user_id": data.user_id,

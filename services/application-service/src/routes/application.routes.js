@@ -6,7 +6,8 @@ import {
   withdrawApplication,
   updateApplicationStatus,
   getJobDescription,
-  getCompanyProfile
+  getCompanyProfile,
+  getLatestJobs
 } from '../controllers/application.controller.js';
 
 const router = express.Router();
@@ -14,6 +15,7 @@ const router = express.Router();
 // Application routes
 router.get('/company/:companyId', getCompanyProfile); // not using this anymore
 router.get('/jobs/:jobId', getJobDescription);
+router.get('/jobs', getLatestJobs);
 router.post('/jobs/:jobId/apply', applyForJob);
 router.get('/my-applications', getUserApplications);
 router.get('/applications/:applicationId', getApplicationById);

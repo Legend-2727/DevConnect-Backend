@@ -465,3 +465,37 @@ export const updateApplicationStatus = async (req, res) => {
     res.status(500).json({ error: 'Failed to update application status' });
   }
 };
+
+export const getLatestJobs = async (req, res) => {
+  try {
+    console.log('getLatestJobs called');
+    console.log('Query:', req.query);
+
+    // Fetch latest jobs with company details
+    const result = await db.query(`
+      SELECT 
+        j.id, j.title, j.description, j.employment_type, j.location, 
+        j.skills, j.deadline, j.is_active, j.posted_at,
+        c.name as company_name, c.logo as company_logo
+      FROM devconnect.jobs j
+      JOIN devconnect.companies c ON j.company_id = c.id
+      WHERE j.is_active = TRUE
+      ORDER BY j.posted_at DESC
+      LIMIT 10
+    `);
+
+    // // make sure that the company logos can be accessed from frontend
+    // result.rows.forEach(job => {
+    //   if (job.company_logo && process.env.HTTPPUBLICIP) {
+        
+
+    res.json({
+      success: true,
+      jobs: result.rows
+    });
+  } catch (error) {
+    console.error('Get latest jobs error:', error);
+    res.status(500).json({ error: 'Failed to fetch latest jobs' });
+  }
+}
+

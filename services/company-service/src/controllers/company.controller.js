@@ -4,7 +4,8 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 
-const JWT_SECRET = process.env.JWT_SECRET || "devconnectsecret";
+// const JWT_SECRET = process.env.JWT_SECRET || "devconnectsecret";
+const JWT_SECRET = process.env.JWT_SECRET || "supersecret";
 
 // Configure multer for logo uploads
 const storage = multer.diskStorage({
@@ -54,7 +55,11 @@ export const uploadLogo = async (req, res) => {
     }
 
     // Generate the logo URL
-    const logoUrl = `http://localhost:4005/uploads/logos/${req.file.filename}`;
+    let logoUrl = `http://localhost:4005/uploads/logos/${req.file.filename}`;
+    // if process.env.HTTPPUBLICIP is set, use it instead of localhost
+    if (process.env.HTTPPUBLICIP) {
+      logoUrl = logoUrl.replace('http://localhost', process.env.HTTPPUBLICIP);
+    }
     console.log('Logo URL:', logoUrl);
 
     // Update company profile with logo URL
@@ -141,6 +146,16 @@ export const getCompanyProfile = async (req, res) => {
     }
 
     const companyData = result.rows[0];
+
+    // Fix logo URL to be accessible from frontend
+    if (companyData.logo && !companyData.logo.startsWith('http')) {
+      companyData.logo = `http://localhost:4005${companyData.logo}`;
+    }
+    // if process.env.HTTPPUBLICIP is set, use it instead of localhost
+    if (process.env.HTTPPUBLICIP && companyData.logo) {
+      companyData.logo = companyData.logo.replace('http://localhost', process.env.HTTPPUBLICIP);
+    }
+    
     console.log('📤 Sending company data for account_id:', userId);
 
     res.json({
@@ -187,6 +202,10 @@ export const createCompanyProfile = async (req, res) => {
     // Handle logo upload if present
     if (req.file) {
       logoUrl = `http://localhost:4005/uploads/logos/${req.file.filename}`;
+      // if process.env.HTTPPUBLICIP is set, use it instead of localhost
+      if (process.env.HTTPPUBLICIP) {
+        logoUrl = logoUrl.replace('http://localhost', process.env.HTTPPUBLICIP);
+      }
     }
 
     // Check if profile already exists
@@ -637,6 +656,16 @@ export const getJobApplications = async (req, res) => {
         // Determine the proper service URL based on whether it's a customized CV or not
         const baseUrl = app.is_customized_cv ? 'http://localhost:4006' : 'http://localhost:4004';
         cvUrl = `${baseUrl}${cvUrl}`;
+        
+        // if process.env.HTTPPUBLICIP is set, use it instead of localhost
+        if (process.env.HTTPPUBLICIP) {
+          cvUrl = cvUrl.replace('http://localhost', process.env.HTTPPUBLICIP);
+        }
+      }
+
+      if (cvUrl && process.env.HTTPPUBLICIP) {
+        // Replace localhost with public IP in the CV URL
+        cvUrl = cvUrl.replace('http://localhost', process.env.HTTPPUBLICIP);
       }
       
       return {

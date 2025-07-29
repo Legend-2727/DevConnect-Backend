@@ -89,6 +89,10 @@ export const getUserProfile = async (req, res) => {
     if (cvUrl && !cvUrl.startsWith('http')) {
       cvUrl = `http://localhost:4004${cvUrl}`;
     }
+    // if process.env.HTTPPUBLICIP is set, use it instead of localhost
+    if (process.env.HTTPPUBLICIP && cvUrl) {
+      cvUrl = cvUrl.replace('http://localhost', process.env.HTTPPUBLICIP);
+    }
     
     res.json({ 
       profile: {
@@ -263,7 +267,19 @@ export const getUser = async (req, res) => {
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'User not found' });
     }
-    
+
+    console.log('User data:', result.rows[0]);
+
+    // Fix CV URL to be accessible from frontend
+    let cvUrl = result.rows[0].cv_url;
+    if (cvUrl && !cvUrl.startsWith('http')) {
+      cvUrl = `http://localhost:4004${cvUrl}`;
+    }
+    // if process.env.HTTPPUBLICIP is set, use it instead of localhost
+    if (process.env.HTTPPUBLICIP && cvUrl) {
+      cvUrl = cvUrl.replace('http://localhost', process.env.HTTPPUBLICIP);
+    }
+
     res.json(result.rows[0]);
   } catch (err) {
     console.error('Get user error:', err);
@@ -327,6 +343,13 @@ export const handleCVUpload = async (req, res) => {
       'UPDATE devconnect.users SET cv_url = $1 WHERE id = $2',
       [cv_url, userId]
     );
+
+    if (cv_url && !cv_url.startsWith('http')) {
+      cv_url = `http://localhost:4004${cv_url}`;
+    }
+    if (process.env.HTTPPUBLICIP && cv_url) {
+      cv_url = cv_url.replace('http://localhost', process.env.HTTPPUBLICIP);
+    }
 
     res.json({ 
       success: true, 
