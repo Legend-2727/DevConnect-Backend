@@ -83,13 +83,18 @@ else:
 def get_jobs_awaiting_interview_scheduling() -> List[int]:
     """Get jobs that have sent shortlist emails but haven't scheduled interviews yet"""
     try:
-        conn = psycopg2.connect(
-            host=os.getenv("DB_HOST", "db"),
-            database=os.getenv("DB_NAME", "main"), 
-            user=os.getenv("DB_USER", "root"),
-            password=os.getenv("DB_PASS", "password"),
-            port=os.getenv("DB_PORT", "5432"),
-        )
+        # Try DATABASE_URL first (like other services), then fallback to individual env vars
+        database_url = os.getenv("DATABASE_URL")
+        if database_url:
+            conn = psycopg2.connect(database_url)
+        else:
+            conn = psycopg2.connect(
+                host=os.getenv("DB_HOST", "db"),
+                database=os.getenv("DB_NAME", "main"), 
+                user=os.getenv("DB_USER", "root"),
+                password=os.getenv("DB_PASS", "password"),
+                port=os.getenv("DB_PORT", "5432"),
+            )
         
         with conn.cursor() as cur:
             from datetime import datetime, timedelta
@@ -129,13 +134,18 @@ def get_jobs_awaiting_interview_scheduling() -> List[int]:
 
 def get_shortlisted_candidates(job_id: int) -> List[dict]:
     """Fetch shortlisted candidates for a job from database"""
-    conn = psycopg2.connect(
-        host=os.getenv("DB_HOST", "db"),
-        database=os.getenv("DB_NAME", "main"),
-        user=os.getenv("DB_USER", "root"),
-        password=os.getenv("DB_PASS", "password"),
-        port=os.getenv("DB_PORT", "5432"),
-    )
+    # Try DATABASE_URL first (like other services), then fallback to individual env vars
+    database_url = os.getenv("DATABASE_URL")
+    if database_url:
+        conn = psycopg2.connect(database_url)
+    else:
+        conn = psycopg2.connect(
+            host=os.getenv("DB_HOST", "db"),
+            database=os.getenv("DB_NAME", "main"),
+            user=os.getenv("DB_USER", "root"),
+            password=os.getenv("DB_PASS", "password"),
+            port=os.getenv("DB_PORT", "5432"),
+        )
     
     try:
         with conn.cursor() as cur:
@@ -173,13 +183,18 @@ def get_shortlisted_candidates(job_id: int) -> List[dict]:
 def create_scheduled_interview(job_id: int, candidate_user_id: int, interview_datetime: str, interviewer_id: int = None) -> bool:
     """Create interview record in database"""
     try:
-        conn = psycopg2.connect(
-            host=os.getenv("DB_HOST", "db"),
-            database=os.getenv("DB_NAME", "main"),
-            user=os.getenv("DB_USER", "root"),
-            password=os.getenv("DB_PASS", "password"),
-            port=os.getenv("DB_PORT", "5432"),
-        )
+        # Try DATABASE_URL first (like other services), then fallback to individual env vars
+        database_url = os.getenv("DATABASE_URL")
+        if database_url:
+            conn = psycopg2.connect(database_url)
+        else:
+            conn = psycopg2.connect(
+                host=os.getenv("DB_HOST", "db"),
+                database=os.getenv("DB_NAME", "main"),
+                user=os.getenv("DB_USER", "root"),
+                password=os.getenv("DB_PASS", "password"),
+                port=os.getenv("DB_PORT", "5432"),
+            )
         
         with conn.cursor() as cur:
             
@@ -284,32 +299,43 @@ def create_scheduled_interview(job_id: int, candidate_user_id: int, interview_da
             conn.close()
 
 def background_interview_monitoring():
-    """Background function that runs every 2 minutes"""
+    """Background function that runs every 60 minutes"""
     try:
-        print(" Running automated interview monitoring...")
+        print("🔄 Running automated interview monitoring...")
         
-        
+        # Get jobs that have sent shortlist emails
         pending_jobs = get_jobs_awaiting_interview_scheduling()
         
         if not pending_jobs:
-            print("ℹ No jobs awaiting interview scheduling")
+            print("ℹ️ No jobs awaiting interview scheduling")
             return
         
-        print(f" Found {len(pending_jobs)} pending jobs: {pending_jobs}")
+        print(f"📋 Found {len(pending_jobs)} pending jobs: {pending_jobs}")
         
         results = []
         for job_id in pending_jobs:
             try:
-                print(f"Checking job {job_id} for interview scheduling...")
+                print(f"🔍 Checking job {job_id} for interview scheduling...")
                 
+                # FIRST: Check for email replies (NO AI USED)
+                from agent_graph.tools.email_monitor_tool import check_interviewer_replies
+                email_check = check_interviewer_replies(job_id)
                 
+                if not email_check.get("has_replies", False):
+                    print(f"⏳ No interviewer replies found for job {job_id} - skipping AI processing")
+                    continue
+                
+                print(f"📧 Found {len(email_check.get('replies', []))} email replies for job {job_id} - proceeding with AI processing")
+                
+                # SECOND: Only call AI graph if there are actual replies
                 shortlisted = get_shortlisted_candidates(job_id)
                 
                 if not shortlisted:
-                    print(f"  No shortlisted candidates found for job {job_id}")
+                    print(f"❌ No shortlisted candidates found for job {job_id}")
                     continue
                 
-                
+                # NOW call the AI graph (only when there are replies)
+                print(f"🤖 Calling AI graph for job {job_id} with {len(email_check['replies'])} replies")
                 result = interview_scheduling_graph.invoke({
                     "messages": [HumanMessage(content="Automated interview monitoring")],
                     "job_id": job_id,
@@ -318,43 +344,29 @@ def background_interview_monitoring():
                 
                 interviews_scheduled = len(result.get("scheduled_interviews", []))
                 
-                
                 if interviews_scheduled > 0:
-                    print(f" Creating {interviews_scheduled} interview records in database...")
-                    
-                    # for interview in result.get("scheduled_interviews", []):
-                        
-                    #     create_scheduled_interview(
-                    #         job_id=job_id,
-                    #         candidate_user_id=interview.get("candidate_id"),  
-                    #         interview_datetime=interview.get("datetime"),
-                    #         interviewer_id=interview.get("interviewer_id")  
-                    #     )
-                    
-                    # print(f" Successfully scheduled {interviews_scheduled} interviews for job {job_id}")
-                    # results.append({
-                    #     "job_id": job_id,
-                    #     "interviews_scheduled": interviews_scheduled,
-                    #     "status": "success"
-                    # })
-                    
-                    
+                    print(f"✅ Successfully scheduled {interviews_scheduled} interviews for job {job_id}")
+                    results.append({
+                        "job_id": job_id,
+                        "interviews_scheduled": interviews_scheduled,
+                        "status": "success"
+                    })
                 else:
-                    print(f"⏳ No interviewer replies yet for job {job_id}")
+                    print(f"⏳ No interviews scheduled for job {job_id} (no suitable time slots found)")
                 
             except Exception as e:
-                print(f" Error processing job {job_id}: {e}")
+                print(f"❌ Error processing job {job_id}: {e}")
                 import traceback
                 traceback.print_exc()
                 continue
         
         if results:
-            print(f" Automated monitoring completed: {len(results)} jobs processed")
+            print(f"🎉 Automated monitoring completed: {len(results)} jobs processed successfully")
         else:
-            print(" No new interviews scheduled in this cycle")
+            print("ℹ️ No new interviews scheduled in this cycle")
             
     except Exception as e:
-        print(f" Background monitoring error: {e}")
+        print(f"❌ Background monitoring error: {e}")
         import traceback
         traceback.print_exc()
 
@@ -362,34 +374,38 @@ def background_interview_monitoring():
 
 def init_scheduler():
     """Initialize scheduler when module loads"""
+    import datetime
+    print(f"🕐 [{datetime.datetime.now()}] init_scheduler() called")
+    
     if not SCHEDULER_AVAILABLE:
-        print("⚠️  Scheduler not available - background monitoring disabled")
+        print(f"⚠️  [{datetime.datetime.now()}] Scheduler not available - background monitoring disabled")
         return
         
     try:
-        print("🔄 Initializing scheduler at module level...")
+        print(f"🔄 [{datetime.datetime.now()}] Initializing scheduler at module level...")
         
         scheduler.add_job(
             func=background_interview_monitoring,
-            trigger=IntervalTrigger(minutes=2),  # Changed from 2 minutes to 60 minutes to conserve API quota
+            trigger=IntervalTrigger(minutes=2),  # Changed back to 2 minutes for demonstration and debugging
             id='interview_monitoring',
             name='Automated Interview Monitoring',
             replace_existing=True
         )
         
         scheduler.start()
-        print("✅ Scheduler started at module level - will check every 60 minutes (API quota conservation)")
+        print(f"✅ [{datetime.datetime.now()}] Scheduler started at module level - will check every 2 minutes (for demonstration)")
         
         # Print initial background check
-        print("🔄 Running initial background check...")
+        print(f"🔄 [{datetime.datetime.now()}] Running initial background check...")
         # background_interview_monitoring()  # Commented out to conserve API quota
         
     except Exception as e:
-        print(f"❌ Module scheduler error: {e}")
+        print(f"❌ [{datetime.datetime.now()}] Module scheduler error: {e}")
         import traceback
         traceback.print_exc()
 
 
+# Re-enable the scheduler
 init_scheduler()
 
 # CV Modification Helper Functions
@@ -412,13 +428,18 @@ def extract_text_from_pdf(file_path):
 def get_job_details_for_cv(job_id: int) -> Dict[str, Any]:
     """Fetch job details from the database by job_id for CV modification"""
     try:
-        connection = psycopg2.connect(
-            host=os.getenv("DB_HOST", "db"),
-            port=os.getenv("DB_PORT", "5432"),
-            database=os.getenv("DB_NAME", "main"),
-            user=os.getenv("DB_USER", "root"),
-            password=os.getenv("DB_PASS", "password")
-        )
+        # Try DATABASE_URL first (like other services), then fallback to individual env vars
+        database_url = os.getenv("DATABASE_URL")
+        if database_url:
+            connection = psycopg2.connect(database_url)
+        else:
+            connection = psycopg2.connect(
+                host=os.getenv("DB_HOST", "db"),
+                port=os.getenv("DB_PORT", "5432"),
+                database=os.getenv("DB_NAME", "main"),
+                user=os.getenv("DB_USER", "root"),
+                password=os.getenv("DB_PASS", "password")
+            )
         cursor = connection.cursor()
         cursor.execute("""
             SELECT j.*, c.name as company_name, c.industry
@@ -589,13 +610,18 @@ class ScheduleInterviewsReq(BaseModel):
 
 def fetch_job_details(job_id: int):
     """Fetch job details and applicants from database"""
-    conn = psycopg2.connect(
-        host=os.getenv("DB_HOST", "db"),
-        database=os.getenv("DB_NAME", "main"),
-        user=os.getenv("DB_USER", "root"),
-        password=os.getenv("DB_PASS", "password"),
-        port=os.getenv("DB_PORT", "5432"),
-    )
+    # Try DATABASE_URL first (like other services), then fallback to individual env vars
+    database_url = os.getenv("DATABASE_URL")
+    if database_url:
+        conn = psycopg2.connect(database_url)
+    else:
+        conn = psycopg2.connect(
+            host=os.getenv("DB_HOST", "db"),
+            database=os.getenv("DB_NAME", "main"),
+            user=os.getenv("DB_USER", "root"),
+            password=os.getenv("DB_PASS", "password"),
+            port=os.getenv("DB_PORT", "5432"),
+        )
     
     try:
         with conn.cursor() as cur:
@@ -824,13 +850,18 @@ async def shortlist_company_job(company_id: int, job_id: int):
         print(f"Received company shortlist request for company {company_id}, job {job_id}")
         
         # Verify the job belongs to the company
-        conn = psycopg2.connect(
-            host=os.getenv("DB_HOST", "db"),
-            database=os.getenv("DB_NAME", "main"),
-            user=os.getenv("DB_USER", "root"),
-            password=os.getenv("DB_PASS", "password"),
-            port=os.getenv("DB_PORT", "5432"),
-        )
+        # Try DATABASE_URL first (like other services), then fallback to individual env vars
+        database_url = os.getenv("DATABASE_URL")
+        if database_url:
+            conn = psycopg2.connect(database_url)
+        else:
+            conn = psycopg2.connect(
+                host=os.getenv("DB_HOST", "db"),
+                database=os.getenv("DB_NAME", "main"),
+                user=os.getenv("DB_USER", "root"),
+                password=os.getenv("DB_PASS", "password"),
+                port=os.getenv("DB_PORT", "5432"),
+            )
         
         try:
             with conn.cursor() as cur:
