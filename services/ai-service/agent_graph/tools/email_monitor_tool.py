@@ -6,10 +6,8 @@ import email
 from email.header import decode_header
 import os
 from datetime import datetime, timedelta
-from langchain_core.tools import tool
 import re
 
-@tool
 def check_interviewer_replies(job_id: int) -> dict:
     """
     Check for interviewer replies to shortlist emails.

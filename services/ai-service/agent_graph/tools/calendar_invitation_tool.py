@@ -8,13 +8,13 @@ from email.mime.multipart import MIMEMultipart
 import os
 import json
 
-@tool
-def send_interview_invitations(scheduled_interviews: str) -> dict:
+def send_interview_invitations(scheduled_interviews: str, job_id: int = None) -> dict:
     """
     Send calendar invitations to candidates and interviewers.
     
     Args:
         scheduled_interviews: JSON string of scheduled interviews
+        job_id: Job ID for reference
     
     Returns:
         dict: {

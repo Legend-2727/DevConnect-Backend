@@ -371,7 +371,7 @@ def init_scheduler():
         
         scheduler.add_job(
             func=background_interview_monitoring,
-            trigger=IntervalTrigger(minutes=60),  # Changed from 2 minutes to 60 minutes to conserve API quota
+            trigger=IntervalTrigger(minutes=2),  # Changed from 2 minutes to 60 minutes to conserve API quota
             id='interview_monitoring',
             name='Automated Interview Monitoring',
             replace_existing=True

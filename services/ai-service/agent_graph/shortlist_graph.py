@@ -54,16 +54,7 @@ shortlist_agent = create_react_agent(
     )
 )
 
-email_agent = create_react_agent(
-    model=llm,
-    tools=[send_shortlist_email],
-    prompt=(
-        "You are an AI assistant that sends professional emails to interviewers "
-        "about shortlisted candidates. Always use the send_shortlist_email tool. "
-        "Be professional and informative."
-    )
-)
-
+# REMOVED: email_agent - no longer needed
 
 def _latest_tool_payload(msgs):
     for m in reversed(msgs):
@@ -154,49 +145,42 @@ def shortlist_node(state: ShortlistState):
     return {"shortlist": shortlisted, "messages": state.get("messages", [])}
 
 def send_email_node(state: ShortlistState):
-    """Send email notification to interviewers"""
+    """Send email notification to interviewers - DIRECT FUNCTION CALL (NO AI)"""
     if not state.get("shortlist") or len(state["shortlist"]) == 0:
         print("No candidates shortlisted, skipping email")
         return {"email_sent": False, "messages": state.get("messages", [])}
     
     try:
+        # DIRECT FUNCTION CALL - NO AI AGENT NEEDED
+        job_title = state.get('job_title', 'Backend Developer')
+        job_id = state.get('job_id', 1)
+        job_description = state['job_desc']
+        shortlisted_candidates = json.dumps(state["shortlist"])
         
-        shortlisted_json = json.dumps(state["shortlist"])
-        
-        res = email_agent.invoke({
-            "messages": [
-                HumanMessage(content=(
-                    f"Send an email to the interviewer about the shortlisted candidates. "
-                    f"Use these details: "
-                    f"Job Title: '{state.get('job_title', 'Backend Developer')}', "
-                    f"Job ID: {state.get('job_id', 1)}, "
-                    f"Job Description: '{state['job_desc']}', "
-                    f"Shortlisted Candidates: {shortlisted_json}"
-                ))
-            ]
-        })
-        
-        payload = _maybe_json(_latest_tool_payload(res["messages"]))
-        email_success = payload.get("success", False) if isinstance(payload, dict) else False
-        print(f"Email sending result: {payload}")
-
-        # if email_success:
-        save_shortlist_email_to_db(
-                job_id=state.get('job_id'),
-                job_title=state.get('job_title', 'Backend Developer'),
-                shortlisted_count=len(state["shortlist"])
+        # Call the email function directly
+        result = send_shortlist_email(
+            job_title=job_title,
+            job_id=job_id,
+            shortlisted_candidates=shortlisted_candidates,
+            job_description=job_description
         )
-            
-            
+        
+        email_success = result.get("success", False)
+        print(f"Email sending result: {result}")
+
+        # Save to database regardless of email success
+        save_shortlist_email_to_db(
+            job_id=job_id,
+            job_title=job_title,
+            shortlisted_count=len(state["shortlist"])
+        )
         
         return {"email_sent": email_success, "messages": state.get("messages", [])}
-        
-        
         
     except Exception as e:
         print(f"Email error: {e}")
         return {"email_sent": False, "messages": state.get("messages", [])}
-    
+
 
 
 def save_shortlist_email_to_db(job_id: int, job_title: str, shortlisted_count: int):
