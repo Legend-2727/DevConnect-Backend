@@ -25,7 +25,6 @@ def fetch_interviewer_email(job_id: int) -> tuple:
     conn.close()
     return result if result else (None, None)
 
-@tool
 def send_shortlist_email(
     job_title: str, 
     job_id: int, 

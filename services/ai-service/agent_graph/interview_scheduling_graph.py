@@ -41,14 +41,7 @@ class InterviewSchedulingState(TypedDict):
 # ─────────────────────────────── LLM & agents ─────────────────────────
 llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.3)
 
-email_monitor_agent = create_react_agent(
-    model=llm, 
-    tools=[check_interviewer_replies],
-    prompt=(
-        "You are an email monitoring assistant. Use the check_interviewer_replies tool "
-        "to check for interviewer responses to shortlist emails. Always use the tool."
-    )
-)
+# REMOVED: email_monitor_agent - no longer needed, will use direct function calls
 
 time_extraction_agent = create_react_agent(
     model=llm,
@@ -59,24 +52,9 @@ time_extraction_agent = create_react_agent(
     )
 )
 
-scheduling_agent = create_react_agent(
-    model=llm,
-    tools=[schedule_interviews_optimally],
-    prompt=(
-        "You are an interview scheduling optimizer. Use the schedule_interviews_optimally tool "
-        "to create an optimal interview schedule matching candidates with available time slots. "
-        "Prioritize higher-scored candidates for better time slots. Always use the tool."
-    )
-)
+# REMOVED: scheduling_agent - no longer needed, will use direct function calls
 
-invitation_agent = create_react_agent(
-    model=llm,
-    tools=[send_interview_invitations],
-    prompt=(
-        "You are a calendar invitation manager. Use the send_interview_invitations tool "
-        "to send professional calendar invites to candidates and interviewers. Always use the tool."
-    )
-)
+# REMOVED: invitation_agent - no longer needed, will use direct function calls
 
 # ─────────────────────────────── helpers ──────────────────────────────
 def _latest_tool_payload(msgs):
@@ -120,24 +98,27 @@ def _smart_payload(content, key_expected: str | None = None):
 
 # ─────────────────────────────── nodes ────────────────────────────────
 def monitor_emails_node(state: InterviewSchedulingState):
-    """Check for interviewer replies"""
+    """Check for interviewer replies - DIRECT FUNCTION CALL (NO AI)"""
     print(f"Monitoring emails for job {state['job_id']}...")
     
-    res = email_monitor_agent.invoke({
-        "messages": [
-            HumanMessage(content=f"Check for interviewer replies for job {state['job_id']}")
-        ]
-    })
-    
-    replies_data = _extract_tool_payload(res["messages"])
-    replies = replies_data.get("replies", []) if isinstance(replies_data, dict) else []
-    
-    print(f"Found {len(replies)} interviewer replies")
-    
-    return {
-        "interviewer_replies": replies,
-        "messages": state["messages"] + res["messages"]
-    }
+    try:
+        # DIRECT FUNCTION CALL - NO AI AGENT NEEDED
+        result = check_interviewer_replies(job_id=state['job_id'])
+        
+        replies = result.get("replies", []) if isinstance(result, dict) else []
+        
+        print(f"Found {len(replies)} interviewer replies")
+        
+        return {
+            "interviewer_replies": replies,
+            "messages": state["messages"]
+        }
+    except Exception as e:
+        print(f"Error monitoring emails: {e}")
+        return {
+            "interviewer_replies": [],
+            "messages": state["messages"]
+        }
 
 def extract_time_slots_node(state: InterviewSchedulingState):
     """Extract available time slots from replies"""
@@ -181,7 +162,7 @@ def extract_time_slots_node(state: InterviewSchedulingState):
     }
 
 def schedule_interviews_node(state: InterviewSchedulingState):
-    """Create interview schedule"""
+    """Create interview schedule - DIRECT FUNCTION CALL (NO AI)"""
     if not state.get("available_slots") or not state.get("shortlisted_candidates"):
         print("No available slots or candidates, skipping scheduling")
         return {
@@ -191,30 +172,35 @@ def schedule_interviews_node(state: InterviewSchedulingState):
     
     print(f"Scheduling interviews for {len(state['shortlisted_candidates'])} candidates...")
     
-    res = scheduling_agent.invoke({
-        "messages": [
-            HumanMessage(content=(
-                f"Use the schedule_interviews_optimally tool with these parameters:\n"
-                f"- candidates: {json.dumps(state['shortlisted_candidates'])}\n"
-                f"- available_slots: {json.dumps(state['available_slots'])}\n"
-                f"- job_id: {state['job_id']}\n"
-                f"Please schedule the interviews using the exact time slots provided."
-            ))
-        ]
-    })
-    
-    schedule_data = _extract_tool_payload(res["messages"])
-    scheduled = schedule_data.get("scheduled_interviews", []) if isinstance(schedule_data, dict) else []
-    
-    print(f"Successfully scheduled {len(scheduled)} interviews")
-    
-    return {
-        "scheduled_interviews": scheduled,
-        "messages": state["messages"] + res["messages"]
-    }
+    try:
+        # DIRECT FUNCTION CALL - NO AI AGENT NEEDED
+        candidates_json = json.dumps(state['shortlisted_candidates'])
+        slots_json = json.dumps(state['available_slots'])
+        
+        result = schedule_interviews_optimally(
+            candidates=candidates_json,
+            available_slots=slots_json,
+            job_id=state['job_id'],
+            interview_duration_minutes=60
+        )
+        
+        scheduled = result.get("scheduled_interviews", []) if isinstance(result, dict) else []
+        
+        print(f"Successfully scheduled {len(scheduled)} interviews")
+        
+        return {
+            "scheduled_interviews": scheduled,
+            "messages": state["messages"]
+        }
+    except Exception as e:
+        print(f"Error scheduling interviews: {e}")
+        return {
+            "scheduled_interviews": [],
+            "messages": state["messages"]
+        }
 
 def send_invitations_node(state: InterviewSchedulingState):
-    """Send calendar invites to all parties"""
+    """Send calendar invites to all parties - DIRECT FUNCTION CALL (NO AI)"""
     if not state.get("scheduled_interviews"):
         print("No scheduled interviews, skipping invitations")
         return {
@@ -224,23 +210,27 @@ def send_invitations_node(state: InterviewSchedulingState):
     
     print(f"Sending calendar invitations for {len(state['scheduled_interviews'])} interviews...")
     
-    res = invitation_agent.invoke({
-        "messages": [
-            HumanMessage(content=(
-                f"Send interview invitations for: {json.dumps(state['scheduled_interviews'])}"
-            ))
-        ]
-    })
-    
-    invite_result = _extract_tool_payload(res["messages"])
-    invites_sent = invite_result.get("calendar_events_created", False) if isinstance(invite_result, dict) else False
-    
-    print(f"Calendar invites sent: {invites_sent}")
-    
-    return {
-        "calendar_invites_sent": invites_sent,
-        "messages": state["messages"] + res["messages"]
-    }
+    try:
+        # DIRECT FUNCTION CALL - NO AI AGENT NEEDED
+        result = send_interview_invitations(
+            scheduled_interviews=state["scheduled_interviews"],
+            job_id=state["job_id"]
+        )
+        
+        invites_sent = result.get("calendar_events_created", False) if isinstance(result, dict) else False
+        
+        print(f"Calendar invites sent: {invites_sent}")
+        
+        return {
+            "calendar_invites_sent": invites_sent,
+            "messages": state["messages"]
+        }
+    except Exception as e:
+        print(f"Error sending invitations: {e}")
+        return {
+            "calendar_invites_sent": False,
+            "messages": state["messages"]
+        }
 
 # ─────────────────────────────── Conditional Logic ────────────────────
 def should_proceed_to_scheduling(state: InterviewSchedulingState):

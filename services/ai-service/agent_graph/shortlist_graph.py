@@ -22,7 +22,7 @@ from langchain_core.messages import (
 from langchain_google_genai import ChatGoogleGenerativeAI
 from agent_graph.tools.full_cv_extract_tool import extract_full_cv_from_pdf
 from agent_graph.tools.shortlist_candidate_tool import shortlist_candidate_tool
-from agent_graph.tools.email_tool import send_shortlist_email
+from agent_graph.tools.email_tool import send_shortlist_email as send_shortlist_email_func
 import psycopg2
 
 # ────────── STATE ──────────
@@ -35,14 +35,12 @@ class ShortlistState(TypedDict):
     applicants: List[dict]   
     shortlist:  Optional[List[dict]]
     email_sent: Optional[bool]
+    applications_updated: Optional[bool]
+    updated_count: Optional[int]
 
 llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.3)
 
-extract_agent = create_react_agent(
-    model=llm, 
-    tools=[extract_full_cv_from_pdf],
-    prompt="Use the tool to extract CV text from PDF files. Return the original_cv_text."
-)
+# REMOVED: extract_agent - no longer needed for simple PDF text extraction
 
 shortlist_agent = create_react_agent(
     model=llm, 
@@ -54,16 +52,7 @@ shortlist_agent = create_react_agent(
     )
 )
 
-email_agent = create_react_agent(
-    model=llm,
-    tools=[send_shortlist_email],
-    prompt=(
-        "You are an AI assistant that sends professional emails to interviewers "
-        "about shortlisted candidates. Always use the send_shortlist_email tool. "
-        "Be professional and informative."
-    )
-)
-
+# REMOVED: email_agent - no longer needed
 
 def _latest_tool_payload(msgs):
     for m in reversed(msgs):
@@ -87,24 +76,22 @@ def _maybe_json(raw):
     return raw
 
 def extract_cvs_node(state: ShortlistState):
-    """Extract CV text from all applicant PDFs"""
+    """Extract CV text from all applicant PDFs - DIRECT FUNCTION CALL (NO AI)"""
     enriched_applicants = []
 
     for app in state["applicants"]:
         print(f"Extracting CV for user {app['user_id']}...")
         try:
-            res = extract_agent.invoke({
-                "messages": [
-                    HumanMessage(content=f"Extract the full CV text from this PDF: {app['cv_path']}. Use the tool.")
-                ]
-            })
-            payload = _maybe_json(_latest_tool_payload(res["messages"]))
-            cv_text = (
-                payload.get("original_cv_text")
-                if isinstance(payload, dict) else str(payload)
-            )
-            enriched_applicants.append({**app, "cv_text": cv_text})
-            print(f"CV extracted for user {app['user_id']} ({len(cv_text)} characters)")
+            # DIRECT FUNCTION CALL - NO AI AGENT NEEDED
+            result = extract_full_cv_from_pdf(app['cv_path'])
+            
+            if "error" in result:
+                print(f"CV extraction failed for user {app['user_id']}: {result['error']}")
+                enriched_applicants.append({**app, "cv_text": "CV extraction failed"})
+            else:
+                cv_text = result.get("original_cv_text", "")
+                enriched_applicants.append({**app, "cv_text": cv_text})
+                print(f"CV extracted for user {app['user_id']} ({len(cv_text)} characters)")
         except Exception as e:
             print(f"CV extraction failed for user {app['user_id']}: {e}")
             enriched_applicants.append({**app, "cv_text": "CV extraction failed"})
@@ -154,61 +141,59 @@ def shortlist_node(state: ShortlistState):
     return {"shortlist": shortlisted, "messages": state.get("messages", [])}
 
 def send_email_node(state: ShortlistState):
-    """Send email notification to interviewers"""
+    """Send email notification to interviewers - DIRECT FUNCTION CALL (NO AI)"""
     if not state.get("shortlist") or len(state["shortlist"]) == 0:
         print("No candidates shortlisted, skipping email")
         return {"email_sent": False, "messages": state.get("messages", [])}
     
     try:
+        # DIRECT FUNCTION CALL - NO AI AGENT NEEDED
+        job_title = state.get('job_title', 'Backend Developer')
+        job_id = state.get('job_id', 1)
+        job_description = state['job_desc']
+        shortlisted_candidates = json.dumps(state["shortlist"])
         
-        shortlisted_json = json.dumps(state["shortlist"])
-        
-        res = email_agent.invoke({
-            "messages": [
-                HumanMessage(content=(
-                    f"Send an email to the interviewer about the shortlisted candidates. "
-                    f"Use these details: "
-                    f"Job Title: '{state.get('job_title', 'Backend Developer')}', "
-                    f"Job ID: {state.get('job_id', 1)}, "
-                    f"Job Description: '{state['job_desc']}', "
-                    f"Shortlisted Candidates: {shortlisted_json}"
-                ))
-            ]
-        })
-        
-        payload = _maybe_json(_latest_tool_payload(res["messages"]))
-        email_success = payload.get("success", False) if isinstance(payload, dict) else False
-        print(f"Email sending result: {payload}")
-
-        # if email_success:
-        save_shortlist_email_to_db(
-                job_id=state.get('job_id'),
-                job_title=state.get('job_title', 'Backend Developer'),
-                shortlisted_count=len(state["shortlist"])
+        # Call the email function directly
+        result = send_shortlist_email_func(
+            job_title=job_title,
+            job_id=job_id,
+            shortlisted_candidates=shortlisted_candidates,
+            job_description=job_description
         )
-            
-            
+        
+        email_success = result.get("success", False)
+        print(f"Email sending result: {result}")
+
+        # Save to database regardless of email success
+        save_shortlist_email_to_db(
+            job_id=job_id,
+            job_title=job_title,
+            shortlisted_count=len(state["shortlist"])
+        )
         
         return {"email_sent": email_success, "messages": state.get("messages", [])}
-        
-        
         
     except Exception as e:
         print(f"Email error: {e}")
         return {"email_sent": False, "messages": state.get("messages", [])}
-    
+
 
 
 def save_shortlist_email_to_db(job_id: int, job_title: str, shortlisted_count: int):
     """Save shortlist email info to database for background scheduler tracking"""
     try:
-        conn = psycopg2.connect(
-            host=os.getenv("DB_HOST", "db"),
-            database=os.getenv("DB_NAME", "main"),
-            user=os.getenv("DB_USER", "root"),
-            password=os.getenv("DB_PASS", "password"),
-            port=os.getenv("DB_PORT", "5432"),
-        )
+        # Try DATABASE_URL first (like other services), then fallback to individual env vars
+        database_url = os.getenv("DATABASE_URL")
+        if database_url:
+            conn = psycopg2.connect(database_url)
+        else:
+            conn = psycopg2.connect(
+                host=os.getenv("DB_HOST", "db"),
+                database=os.getenv("DB_NAME", "main"),
+                user=os.getenv("DB_USER", "root"),
+                password=os.getenv("DB_PASS", "password"),
+                port=os.getenv("DB_PORT", "5432"),
+            )
         
         with conn.cursor() as cur:
             # ✅ FIXED: Use the correct column names that match existing table
@@ -235,16 +220,65 @@ def save_shortlist_email_to_db(job_id: int, job_title: str, shortlisted_count: i
             conn.close()
 
 
+def update_applications_status_node(state: ShortlistState):
+    """Update applications table to mark shortlisted candidates"""
+    if not state.get("shortlist") or len(state["shortlist"]) == 0:
+        print("No candidates shortlisted, skipping database update")
+        return {"applications_updated": False, "messages": state.get("messages", [])}
+    
+    try:
+        job_id = state.get('job_id')
+        shortlisted_user_ids = [candidate["user_id"] for candidate in state["shortlist"]]
+        
+        print(f"🔄 Updating {len(shortlisted_user_ids)} applications to SHORTLISTED status for job {job_id}")
+        
+        # Try DATABASE_URL first (like other services), then fallback to individual env vars
+        database_url = os.getenv("DATABASE_URL")
+        if database_url:
+            conn = psycopg2.connect(database_url)
+        else:
+            conn = psycopg2.connect(
+                host=os.getenv("DB_HOST", "db"),
+                database=os.getenv("DB_NAME", "main"),
+                user=os.getenv("DB_USER", "root"),
+                password=os.getenv("DB_PASS", "password"),
+                port=os.getenv("DB_PORT", "5432"),
+            )
+        
+        with conn.cursor() as cur:
+            cur.execute("""
+                UPDATE devconnect.applications 
+                SET status = 'SHORTLISTED', updated_at = NOW()
+                WHERE job_id = %s AND user_id = ANY(%s)
+            """, [job_id, shortlisted_user_ids])
+            
+            updated_count = cur.rowcount
+            conn.commit()
+            
+            print(f"✅ Successfully updated {updated_count} applications to SHORTLISTED status")
+            
+        conn.close()
+        return {"applications_updated": True, "updated_count": updated_count, "messages": state.get("messages", [])}
+        
+    except Exception as e:
+        print(f"❌ Error updating applications status: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"applications_updated": False, "messages": state.get("messages", [])}
+
+
 # ────────── Graph ──────────
 builder = StateGraph(ShortlistState)
 builder.add_node("extract_cvs", extract_cvs_node)
 builder.add_node("make_shortlist", shortlist_node)
 builder.add_node("send_email", send_email_node) 
+builder.add_node("update_applications", update_applications_status_node)
 
 builder.set_entry_point("extract_cvs")
 builder.add_edge("extract_cvs", "make_shortlist")
 builder.add_edge("make_shortlist", "send_email")
-builder.set_finish_point("send_email")
+builder.add_edge("send_email", "update_applications")
+builder.set_finish_point("update_applications")
 
 shortlist_graph = builder.compile()
 
