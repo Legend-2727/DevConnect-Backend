@@ -1,3 +1,5 @@
+import db from '../db/index.js';
+
 // Validate ID parameters
 export const validateIds = (req, res, next) => {
   const { companyId, jobId } = req.params;
