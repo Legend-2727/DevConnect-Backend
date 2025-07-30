@@ -336,7 +336,7 @@ export const handleCVUpload = async (req, res) => {
     }
 
     const { userId } = req.params;
-    const cv_url = `/uploads/cvs/${req.file.filename}`;
+    let cv_url = `/uploads/cvs/${req.file.filename}`;
 
     // Update user's CV URL in database
     await db.query(
