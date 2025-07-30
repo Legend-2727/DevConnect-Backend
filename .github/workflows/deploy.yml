@@ -2,7 +2,7 @@ name: Deploy DevConnect to Azure VM
 
 on:
   push:
-    branches: [deploy]
+    branches: [deploybranch]
   workflow_dispatch:
 
 jobs:
@@ -45,19 +45,19 @@ jobs:
             set -e
             
             echo "Creating project directory if it doesn't exist..."
-            mkdir -p ~/devconnect-2
-            cd ~/devconnect-2
+            mkdir -p ~/devconnect
+            cd ~/devconnect
             
             echo "Cloning or updating repositories..."
             if [ ! -d "DevConnect-Backend" ]; then
               git clone https://github.com/Legend-2727/DevConnect-Backend.git
               cd DevConnect-Backend
-              git checkout deploy
+              git checkout deploybranch
               cd ..
             else
               cd DevConnect-Backend
-              git checkout deploy
-              git pull origin deploy
+              git checkout deploybranch
+              git pull origin deploybranch
               cd ..
             fi
             
@@ -127,12 +127,12 @@ jobs:
             if [ ! -d "devconnect-frontend" ]; then
               git clone https://github.com/OitijhyaHoque/devconnect-frontend.git
               cd devconnect-frontend
-              git checkout deploy
+              git checkout deploybranch
               cd ..
             else
               cd devconnect-frontend
-              git checkout deploy
-              git pull origin deploy
+              git checkout deploybranch
+              git pull origin deploybranch
               cd ..
             fi
             
