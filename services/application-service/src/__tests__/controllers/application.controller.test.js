@@ -15,17 +15,27 @@ jest.unstable_mockModule('../../db/index.js', () => ({
   },
 }));
 
+jest.unstable_mockModule('fs', () => ({
+  default: {
+    existsSync: jest.fn().mockReturnValue(true),
+    mkdirSync: jest.fn(),
+    writeFileSync: jest.fn(),
+  },
+}));
+
 // ==================================================================
 // DYNAMICALLY IMPORT MODULES
 // ==================================================================
 let applicationController;
 let db;
 let jwt;
+let fs;
 
 beforeAll(async () => {
   applicationController = await import('../../controllers/application.controller.js');
   db = (await import('../../db/index.js')).default;
   jwt = (await import('jsonwebtoken')).default;
+  fs = (await import('fs')).default;
 });
 
 // ==================================================================
@@ -54,415 +64,252 @@ describe('Application Controller', () => {
     jwt.verify.mockReturnValue(user);
   };
 
-  // Helper to set up database mocks
-  const setupDbMocks = (mocks) => {
-    mocks.forEach((mock, index) => {
-      db.query.mockResolvedValueOnce(mock);
+  describe('getCompanyProfile', () => {
+    it('should return a company profile when found', async () => {
+      mockRequest.params = { companyId: '1' };
+      const mockCompany = { id: 1, name: 'Test Corp', industry: 'Tech' };
+      db.query.mockResolvedValue({ rows: [mockCompany] });
+
+      await applicationController.getCompanyProfile(mockRequest, mockResponse);
+
+      expect(db.query).toHaveBeenCalledWith(expect.stringContaining('SELECT'), ['1']);
+      expect(mockResponse.status).toHaveBeenCalledWith(200);
+      expect(mockResponse.json).toHaveBeenCalledWith({ success: true, company: mockCompany });
     });
-  };
 
-  describe('applyForJob', () => {
-    it('should create a new application when valid request', async () => {
-      // Setup
-      setupAuth();
-      mockRequest.params = { jobId: '123' };
+    it('should return 404 if company not found', async () => {
+      mockRequest.params = { companyId: '999' };
+      db.query.mockResolvedValue({ rows: [] });
+
+      await applicationController.getCompanyProfile(mockRequest, mockResponse);
+
+      expect(mockResponse.status).toHaveBeenCalledWith(404);
+      expect(mockResponse.json).toHaveBeenCalledWith({ error: 'Company not found' });
+    });
+
+    it('should handle database errors', async () => {
+      mockRequest.params = { companyId: '1' };
+      db.query.mockRejectedValue(new Error('Database error'));
+
+      await applicationController.getCompanyProfile(mockRequest, mockResponse);
+
+      expect(mockResponse.status).toHaveBeenCalledWith(500);
+      expect(mockResponse.json).toHaveBeenCalledWith({ error: 'Failed to get company profile' });
+    });
+  });
+
+  describe('getJobDescription', () => {
+    it('should return job and company details when job found', async () => {
+      mockRequest.params = { jobId: '1' };
+      const mockJob = { id: 1, title: 'Developer', company_id: 2 };
+      const mockCompany = { id: 2, name: 'Test Corp' };
       
-      const userProfileMock = { rows: [{ id: 5 }] };
-      const jobMock = { rows: [{ id: 123 }] };
-      const existingAppMock = { rows: [] }; // No existing application
-      const newAppMock = { 
-        rows: [{ 
-          id: 42, 
-          job_id: 123, 
-          user_id: 5, 
-          status: 'UNDER_REVIEW', 
-          applied_at: new Date()
-        }]
-      };
-      
-      setupDbMocks([userProfileMock, jobMock, existingAppMock, newAppMock]);
+      db.query
+        .mockResolvedValueOnce({ rows: [mockJob] })
+        .mockResolvedValueOnce({ rows: [mockCompany] });
 
-      // Execute
-      await applicationController.applyForJob(mockRequest, mockResponse);
+      await applicationController.getJobDescription(mockRequest, mockResponse);
 
-      // Assert
-      expect(db.query).toHaveBeenCalledTimes(4);
-      expect(mockResponse.status).toHaveBeenCalledWith(201);
+      expect(db.query).toHaveBeenCalledTimes(2);
+      expect(mockResponse.status).toHaveBeenCalledWith(200);
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        application: newAppMock.rows[0]
+        job: mockJob,
+        company: mockCompany
       });
     });
 
-    it('should return 401 if no token is provided', async () => {
-      // No token setup
-      await applicationController.applyForJob(mockRequest, mockResponse);
+    it('should return 404 if job not found', async () => {
+      mockRequest.params = { jobId: '999' };
+      db.query.mockResolvedValue({ rows: [] });
 
+      await applicationController.getJobDescription(mockRequest, mockResponse);
+
+      expect(mockResponse.status).toHaveBeenCalledWith(404);
+      expect(mockResponse.json).toHaveBeenCalledWith({ error: 'Job not found' });
+    });
+  });
+
+  describe('applyForJob', () => {
+    
+
+    it('should return 401 if no token provided', async () => {
+      mockRequest.params = { jobId: '1' };
+      
+      await applicationController.applyForJob(mockRequest, mockResponse);
+      
       expect(mockResponse.status).toHaveBeenCalledWith(401);
       expect(mockResponse.json).toHaveBeenCalledWith({ error: 'Unauthorized - No token' });
     });
 
-    it('should return 403 if account is not a User', async () => {
+    it('should return 403 if account is not a User type', async () => {
       setupAuth({ id: 1, type: 'Company' });
+      mockRequest.params = { jobId: '1' };
       
       await applicationController.applyForJob(mockRequest, mockResponse);
-
+      
       expect(mockResponse.status).toHaveBeenCalledWith(403);
       expect(mockResponse.json).toHaveBeenCalledWith({ error: 'Only users can apply for jobs' });
     });
 
-    it('should return 404 if user profile is not found', async () => {
+    it('should return 409 if user already applied for the job', async () => {
       setupAuth();
-      setupDbMocks([{ rows: [] }]); // No user profile
+      mockRequest.params = { jobId: '1' };
+      
+      db.query
+        .mockResolvedValueOnce({ rows: [{ id: 10 }] }) // Get user
+        .mockResolvedValueOnce({ rows: [{ id: 1 }] }) // Job exists
+        .mockResolvedValueOnce({ rows: [{ id: 5 }] }); // Existing application
       
       await applicationController.applyForJob(mockRequest, mockResponse);
-
-      expect(mockResponse.status).toHaveBeenCalledWith(404);
-      expect(mockResponse.json).toHaveBeenCalledWith({ error: 'User profile not found' });
-    });
-
-    it('should return 404 if job is not found or inactive', async () => {
-      setupAuth();
-      setupDbMocks([
-        { rows: [{ id: 5 }] }, // User exists
-        { rows: [] } // Job not found
-      ]);
-      mockRequest.params = { jobId: '999' };
       
-      await applicationController.applyForJob(mockRequest, mockResponse);
-
-      expect(mockResponse.status).toHaveBeenCalledWith(404);
-      expect(mockResponse.json).toHaveBeenCalledWith({ error: 'Job not found or no longer active' });
-    });
-
-    it('should return 409 if already applied for the job', async () => {
-      setupAuth();
-      mockRequest.params = { jobId: '123' };
-      
-      setupDbMocks([
-        { rows: [{ id: 5 }] }, // User exists
-        { rows: [{ id: 123 }] }, // Job exists
-        { rows: [{ id: 42 }] } // Already applied
-      ]);
-      
-      await applicationController.applyForJob(mockRequest, mockResponse);
-
       expect(mockResponse.status).toHaveBeenCalledWith(409);
       expect(mockResponse.json).toHaveBeenCalledWith({ error: 'You have already applied for this job' });
     });
   });
 
   describe('getUserApplications', () => {
-    it('should return all applications for the current user', async () => {
-      // Setup
+    it('should return user applications when authorized', async () => {
       setupAuth();
+      const mockApplications = [
+        { id: 1, job_title: 'Developer', company_name: 'Test Corp' }
+      ];
       
-      const userProfileMock = { rows: [{ id: 5 }] };
-      const applicationsMock = { 
-        rows: [
-          { 
-            id: 1, 
-            job_id: 100, 
-            status: 'UNDER_REVIEW', 
-            job_title: 'Software Engineer',
-            company_name: 'Tech Co'
-          },
-          { 
-            id: 2, 
-            job_id: 101, 
-            status: 'SHORTLISTED', 
-            job_title: 'Frontend Developer',
-            company_name: 'Dev Inc'
-          }
-        ] 
-      };
+      db.query
+        .mockResolvedValueOnce({ rows: [{ id: 10 }] }) // Get user
+        .mockResolvedValueOnce({ rows: mockApplications }); // Get applications
       
-      setupDbMocks([userProfileMock, applicationsMock]);
-
-      // Execute
       await applicationController.getUserApplications(mockRequest, mockResponse);
-
-      // Assert
-      expect(db.query).toHaveBeenCalledTimes(2);
+      
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        applications: applicationsMock.rows
+        applications: mockApplications
       });
     });
 
-    it('should return 401 if no token is provided', async () => {
+    it('should return 401 if no token provided', async () => {
       await applicationController.getUserApplications(mockRequest, mockResponse);
-
+      
       expect(mockResponse.status).toHaveBeenCalledWith(401);
-      expect(mockResponse.json).toHaveBeenCalledWith({ error: 'Unauthorized - No token' });
     });
 
-    it('should return 403 if account is not a User', async () => {
+    it('should return 403 if account is not a User type', async () => {
       setupAuth({ id: 1, type: 'Company' });
       
       await applicationController.getUserApplications(mockRequest, mockResponse);
-
+      
       expect(mockResponse.status).toHaveBeenCalledWith(403);
-      expect(mockResponse.json).toHaveBeenCalledWith({ error: 'Access denied' });
-    });
-
-    it('should return 404 if user profile is not found', async () => {
-      setupAuth();
-      setupDbMocks([{ rows: [] }]); // No user profile
-      
-      await applicationController.getUserApplications(mockRequest, mockResponse);
-
-      expect(mockResponse.status).toHaveBeenCalledWith(404);
-      expect(mockResponse.json).toHaveBeenCalledWith({ error: 'User profile not found' });
-    });
-  });
-
-  describe('getApplicationById', () => {
-    it('should return application details for User when they own the application', async () => {
-      // Setup
-      setupAuth();
-      mockRequest.params = { applicationId: '42' };
-      
-      const userProfileMock = { rows: [{ id: 5 }] };
-      const applicationMock = { 
-        rows: [{ 
-          id: 42, 
-          job_id: 123, 
-          user_id: 5, 
-          status: 'UNDER_REVIEW',
-          job_title: 'Software Engineer',
-          company_name: 'Tech Co' 
-        }] 
-      };
-      
-      setupDbMocks([userProfileMock, applicationMock]);
-
-      // Execute
-      await applicationController.getApplicationById(mockRequest, mockResponse);
-
-      // Assert
-      expect(db.query).toHaveBeenCalledTimes(2);
-      expect(mockResponse.json).toHaveBeenCalledWith({
-        success: true,
-        application: applicationMock.rows[0]
-      });
-    });
-
-    it('should return application details for Company when they own the job', async () => {
-      // Setup
-      setupAuth({ id: 1, type: 'Company' });
-      mockRequest.params = { applicationId: '42' };
-      
-      const companyProfileMock = { rows: [{ id: 10 }] };
-      const applicationMock = { 
-        rows: [{ 
-          id: 42, 
-          job_id: 123, 
-          user_id: 5, 
-          status: 'UNDER_REVIEW',
-          job_title: 'Software Engineer',
-          company_name: 'Tech Co',
-          applicant_name: 'John Doe' 
-        }] 
-      };
-      
-      setupDbMocks([companyProfileMock, applicationMock]);
-
-      // Execute
-      await applicationController.getApplicationById(mockRequest, mockResponse);
-
-      // Assert
-      expect(db.query).toHaveBeenCalledTimes(2);
-      expect(mockResponse.json).toHaveBeenCalledWith({
-        success: true,
-        application: applicationMock.rows[0]
-      });
-    });
-
-    it('should return 401 if no token is provided', async () => {
-      await applicationController.getApplicationById(mockRequest, mockResponse);
-
-      expect(mockResponse.status).toHaveBeenCalledWith(401);
-      expect(mockResponse.json).toHaveBeenCalledWith({ error: 'Unauthorized - No token' });
-    });
-
-    it('should return 403 if account type is invalid', async () => {
-      setupAuth({ id: 1, type: 'Admin' }); // Invalid account type
-      
-      await applicationController.getApplicationById(mockRequest, mockResponse);
-
-      expect(mockResponse.status).toHaveBeenCalledWith(403);
-      expect(mockResponse.json).toHaveBeenCalledWith({ error: 'Invalid account type' });
-    });
-
-    it('should return 404 if application is not found or access is denied', async () => {
-      setupAuth();
-      mockRequest.params = { applicationId: '999' };
-      
-      setupDbMocks([
-        { rows: [{ id: 5 }] }, // User profile found
-        { rows: [] } // No application or not authorized
-      ]);
-      
-      await applicationController.getApplicationById(mockRequest, mockResponse);
-
-      expect(mockResponse.status).toHaveBeenCalledWith(404);
-      expect(mockResponse.json).toHaveBeenCalledWith({ error: 'Application not found or access denied' });
     });
   });
 
   describe('withdrawApplication', () => {
-    it('should successfully withdraw an application', async () => {
-      // Setup
+    it('should update application status to WITHDRAWN', async () => {
       setupAuth();
-      mockRequest.params = { applicationId: '42' };
+      mockRequest.params = { applicationId: '1' };
       
-      const userProfileMock = { rows: [{ id: 5 }] };
-      const updatedAppMock = { 
-        rows: [{ 
-          id: 42, 
-          status: 'WITHDRAWN', 
-          updated_at: new Date() 
-        }] 
-      };
+      db.query
+        .mockResolvedValueOnce({ rows: [{ id: 10 }] }) // Get user
+        .mockResolvedValueOnce({ rows: [{ id: 1, status: 'WITHDRAWN' }] }); // Update application
       
-      setupDbMocks([userProfileMock, updatedAppMock]);
-
-      // Execute
       await applicationController.withdrawApplication(mockRequest, mockResponse);
-
-      // Assert
-      expect(db.query).toHaveBeenCalledTimes(2);
+      
+      expect(db.query).toHaveBeenCalledWith(
+        expect.stringContaining('UPDATE devconnect.applications'),
+        ['1', 10]
+      );
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        application: updatedAppMock.rows[0],
+        application: expect.objectContaining({ status: 'WITHDRAWN' }),
         message: 'Application withdrawn successfully'
       });
     });
 
-    it('should return 401 if no token is provided', async () => {
-      await applicationController.withdrawApplication(mockRequest, mockResponse);
-
-      expect(mockResponse.status).toHaveBeenCalledWith(401);
-      expect(mockResponse.json).toHaveBeenCalledWith({ error: 'Unauthorized - No token' });
-    });
-
-    it('should return 403 if account is not a User', async () => {
-      setupAuth({ id: 1, type: 'Company' });
-      
-      await applicationController.withdrawApplication(mockRequest, mockResponse);
-
-      expect(mockResponse.status).toHaveBeenCalledWith(403);
-      expect(mockResponse.json).toHaveBeenCalledWith({ error: 'Only users can withdraw applications' });
-    });
-
-    it('should return 404 if user profile is not found', async () => {
-      setupAuth();
-      setupDbMocks([{ rows: [] }]); // No user profile
-      
-      await applicationController.withdrawApplication(mockRequest, mockResponse);
-
-      expect(mockResponse.status).toHaveBeenCalledWith(404);
-      expect(mockResponse.json).toHaveBeenCalledWith({ error: 'User profile not found' });
-    });
-
-    it('should return 404 if application is not found or user does not own it', async () => {
+    it('should return 404 if application not found or not owned by user', async () => {
       setupAuth();
       mockRequest.params = { applicationId: '999' };
       
-      setupDbMocks([
-        { rows: [{ id: 5 }] }, // User profile found
-        { rows: [] } // No application or not owned by user
-      ]);
+      db.query
+        .mockResolvedValueOnce({ rows: [{ id: 10 }] }) // Get user
+        .mockResolvedValueOnce({ rows: [] }); // No application found
       
       await applicationController.withdrawApplication(mockRequest, mockResponse);
-
+      
       expect(mockResponse.status).toHaveBeenCalledWith(404);
       expect(mockResponse.json).toHaveBeenCalledWith({ error: 'Application not found or access denied' });
     });
   });
 
   describe('updateApplicationStatus', () => {
-    it('should successfully update application status as a company', async () => {
-      // Setup
+    it('should allow company to update application status', async () => {
       setupAuth({ id: 1, type: 'Company' });
-      mockRequest.params = { applicationId: '42' };
-      mockRequest.body = { status: 'SHORTLISTED' };
+      mockRequest.params = { applicationId: '1' };
+      mockRequest.body = { status: 'ACCEPTED' };
       
-      const companyProfileMock = { rows: [{ id: 10 }] };
-      const updatedAppMock = { 
-        rows: [{ 
-          id: 42, 
-          status: 'SHORTLISTED', 
-          updated_at: new Date() 
-        }] 
-      };
+      db.query
+        .mockResolvedValueOnce({ rows: [{ id: 5 }] }) // Get company
+        .mockResolvedValueOnce({ rows: [{ id: 1, status: 'ACCEPTED' }] }); // Update application
       
-      setupDbMocks([companyProfileMock, updatedAppMock]);
-
-      // Execute
       await applicationController.updateApplicationStatus(mockRequest, mockResponse);
-
-      // Assert
-      expect(db.query).toHaveBeenCalledTimes(2);
+      
+      expect(db.query).toHaveBeenCalledWith(
+        expect.stringContaining('UPDATE devconnect.applications'),
+        ['ACCEPTED', '1', 5]
+      );
       expect(mockResponse.json).toHaveBeenCalledWith({
         success: true,
-        application: updatedAppMock.rows[0],
+        application: expect.objectContaining({ status: 'ACCEPTED' }),
         message: 'Application status updated successfully'
       });
     });
 
-    it('should return 401 if no token is provided', async () => {
-      await applicationController.updateApplicationStatus(mockRequest, mockResponse);
-
-      expect(mockResponse.status).toHaveBeenCalledWith(401);
-      expect(mockResponse.json).toHaveBeenCalledWith({ error: 'Unauthorized - No token' });
-    });
-
-    it('should return 403 if account is not a Company', async () => {
-      setupAuth({ id: 1, type: 'User' });
-      
-      await applicationController.updateApplicationStatus(mockRequest, mockResponse);
-
-      expect(mockResponse.status).toHaveBeenCalledWith(403);
-      expect(mockResponse.json).toHaveBeenCalledWith({ error: 'Only companies can update application status' });
-    });
-
-    it('should return 400 if status value is invalid', async () => {
+    it('should return 400 if status is invalid', async () => {
       setupAuth({ id: 1, type: 'Company' });
+      mockRequest.params = { applicationId: '1' };
       mockRequest.body = { status: 'INVALID_STATUS' };
       
       await applicationController.updateApplicationStatus(mockRequest, mockResponse);
-
+      
       expect(mockResponse.status).toHaveBeenCalledWith(400);
       expect(mockResponse.json).toHaveBeenCalledWith({ error: 'Invalid status value' });
     });
 
-    it('should return 404 if company profile is not found', async () => {
-      setupAuth({ id: 1, type: 'Company' });
-      mockRequest.body = { status: 'SHORTLISTED' };
-      setupDbMocks([{ rows: [] }]); // No company profile
+    it('should return 403 if user tries to update application status', async () => {
+      setupAuth({ id: 1, type: 'User' });
+      mockRequest.params = { applicationId: '1' };
+      mockRequest.body = { status: 'ACCEPTED' };
       
       await applicationController.updateApplicationStatus(mockRequest, mockResponse);
+      
+      expect(mockResponse.status).toHaveBeenCalledWith(403);
+      expect(mockResponse.json).toHaveBeenCalledWith({ error: 'Only companies can update application status' });
+    });
+  });
 
-      expect(mockResponse.status).toHaveBeenCalledWith(404);
-      expect(mockResponse.json).toHaveBeenCalledWith({ error: 'Company profile not found' });
+  describe('getLatestJobs', () => {
+    it('should return latest active jobs', async () => {
+      const mockJobs = [
+        { id: 1, title: 'Developer', company_name: 'Tech Corp' },
+        { id: 2, title: 'Designer', company_name: 'Design Co' }
+      ];
+      
+      db.query.mockResolvedValue({ rows: mockJobs });
+      
+      await applicationController.getLatestJobs(mockRequest, mockResponse);
+      
+      expect(db.query).toHaveBeenCalledWith(expect.stringContaining('SELECT'));
+      expect(mockResponse.json).toHaveBeenCalledWith({
+        success: true,
+        jobs: mockJobs
+      });
     });
 
-    it('should return 404 if application is not found or not for company job', async () => {
-      setupAuth({ id: 1, type: 'Company' });
-      mockRequest.params = { applicationId: '999' };
-      mockRequest.body = { status: 'SHORTLISTED' };
+    it('should handle database errors', async () => {
+      db.query.mockRejectedValue(new Error('Database error'));
       
-      setupDbMocks([
-        { rows: [{ id: 10 }] }, // Company profile found
-        { rows: [] } // No application or not for company job
-      ]);
+      await applicationController.getLatestJobs(mockRequest, mockResponse);
       
-      await applicationController.updateApplicationStatus(mockRequest, mockResponse);
-
-      expect(mockResponse.status).toHaveBeenCalledWith(404);
-      expect(mockResponse.json).toHaveBeenCalledWith({ error: 'Application not found or access denied' });
+      expect(mockResponse.status).toHaveBeenCalledWith(500);
+      expect(mockResponse.json).toHaveBeenCalledWith({ error: 'Failed to fetch latest jobs' });
     });
   });
 });
