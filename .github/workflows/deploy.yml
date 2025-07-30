@@ -52,10 +52,12 @@ jobs:
             if [ ! -d "DevConnect-Backend" ]; then
               git clone https://github.com/Legend-2727/DevConnect-Backend.git
               cd DevConnect-Backend
+              git fetch origin
               git checkout deploybranch
               cd ..
             else
               cd DevConnect-Backend
+              git fetch origin
               git checkout deploybranch
               git pull origin deploybranch
               cd ..
@@ -131,6 +133,7 @@ jobs:
               cd ..
             else
               cd devconnect-frontend
+              git fetch origin
               git checkout deploybranch
               git pull origin deploybranch
               cd ..
